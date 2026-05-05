@@ -19,14 +19,14 @@ namespace MMDBlendShapeChecker
         public static void 打开窗口()
         {
             var window = GetWindow<MMDBlendShapeCheckerWindow>("MMD 过闭合检测");
-            window.minSize = new Vector2(500, 380);
+            window.minSize = new Vector2(520, 400);
         }
 
         private void OnGUI()
         {
             EditorGUILayout.Space(8);
             EditorGUILayout.LabelField("MMD BlendShape 过闭合检测器", EditorStyles.boldLabel);
-            EditorGUILayout.LabelField("检测面部 MMD blendshape 的过度闭合/穿透/法线翻转 (含超限外推)", EditorStyles.miniLabel);
+            EditorGUILayout.LabelField("检测基值叠加 + MMD驱动下的眼/嘴/眉过度闭合 (含超限外推)", EditorStyles.miniLabel);
             EditorGUILayout.Space(8);
 
             _faceRenderer = (SkinnedMeshRenderer)EditorGUILayout.ObjectField(
@@ -65,32 +65,25 @@ namespace MMDBlendShapeChecker
 
         private void 显示摘要()
         {
-            int 严重数 = _report.所有结果.Count(r => r.严重程度 == 检测严重程度.严重);
-            int 警告数 = _report.所有结果.Count(r => r.严重程度 == 检测严重程度.警告);
-            int 注意数 = _report.所有结果.Count(r => r.严重程度 == 检测严重程度.注意);
-            int 正常数 = _report.所有结果.Count(r => r.严重程度 == 检测严重程度.正常);
-            int 缺失数 = _report.缺失形状列表.Count;
+            int s = _report.所有结果.Count(r => r.严重程度 == 检测严重程度.严重);
+            int w = _report.所有结果.Count(r => r.严重程度 == 检测严重程度.警告);
+            int n = _report.所有结果.Count(r => r.严重程度 == 检测严重程度.注意);
+            int ok = _report.所有结果.Count(r => r.严重程度 == 检测严重程度.正常);
+            int miss = _report.缺失形状列表.Count;
 
             EditorGUILayout.BeginVertical(EditorStyles.helpBox);
             EditorGUILayout.LabelField(
-                $"网格: {_report.网格名称}  |  总形状: {_report.总形状数}  |  MMD形状: {_report.MMD形状数}",
+                $"网格: {_report.网格名称}  |  总形状: {_report.总形状数}  |  MMD形状: {_report.MMD形状数}  |  有基值: {_report.存在基值的形状数}",
                 EditorStyles.miniLabel);
 
             EditorGUILayout.BeginHorizontal();
-            var oldColor = GUI.color;
-
-            GUI.color = new Color(1f, 0.3f, 0.3f);
-            EditorGUILayout.LabelField($"严重: {严重数}", GUILayout.Width(70));
-            GUI.color = new Color(1f, 0.7f, 0.2f);
-            EditorGUILayout.LabelField($"警告: {警告数}", GUILayout.Width(70));
-            GUI.color = new Color(0.5f, 0.8f, 1f);
-            EditorGUILayout.LabelField($"注意: {注意数}", GUILayout.Width(70));
-            GUI.color = new Color(0.3f, 0.8f, 0.3f);
-            EditorGUILayout.LabelField($"正常: {正常数}", GUILayout.Width(70));
-            GUI.color = Color.gray;
-            EditorGUILayout.LabelField($"缺失: {缺失数}", GUILayout.Width(70));
-
-            GUI.color = oldColor;
+            var c = GUI.color;
+            GUI.color = new Color(1f, 0.3f, 0.3f); EditorGUILayout.LabelField($"严重: {s}", GUILayout.Width(60));
+            GUI.color = new Color(1f, 0.7f, 0.2f); EditorGUILayout.LabelField($"警告: {w}", GUILayout.Width(60));
+            GUI.color = new Color(0.5f, 0.8f, 1f); EditorGUILayout.LabelField($"注意: {n}", GUILayout.Width(60));
+            GUI.color = new Color(0.3f, 0.8f, 0.3f); EditorGUILayout.LabelField($"正常: {ok}", GUILayout.Width(60));
+            GUI.color = Color.gray;                EditorGUILayout.LabelField($"缺失: {miss}", GUILayout.Width(60));
+            GUI.color = c;
             EditorGUILayout.EndHorizontal();
             EditorGUILayout.EndVertical();
         }
@@ -100,41 +93,34 @@ namespace MMDBlendShapeChecker
             var items = _report.所有结果.Where(r => (r.分类 & category) != 0).ToList();
             if (items.Count == 0) return;
 
-            int severe = items.Count(r => r.严重程度 == 检测严重程度.严重);
-            int warn = items.Count(r => r.严重程度 == 检测严重程度.警告);
-
+            int s = items.Count(r => r.严重程度 == 检测严重程度.严重);
+            int w = items.Count(r => r.严重程度 == 检测严重程度.警告);
             string label = $"{title} ({items.Count})";
-            if (severe > 0) label += $"  [{severe}严重]";
-            if (warn > 0) label += $"  [{warn}警告]";
+            if (s > 0) label += $"  [{s}严重]";
+            if (w > 0) label += $"  [{w}警告]";
 
             foldout = EditorGUILayout.Foldout(foldout, label, true);
             if (!foldout) return;
 
             EditorGUI.indentLevel++;
             foreach (var item in items.OrderBy(r => (int)r.严重程度))
-            {
                 显示结果条目(item);
-            }
             EditorGUI.indentLevel--;
         }
 
         private void 显示缺失列表(ref bool foldout)
         {
             if (_report.缺失形状列表.Count == 0) return;
-
             foldout = EditorGUILayout.Foldout(foldout,
                 $"缺失标准MMD形状 ({_report.缺失形状列表.Count})", true);
             if (!foldout) return;
 
             EditorGUI.indentLevel++;
-            var gray = new Color(0.6f, 0.6f, 0.6f);
-            var oldColor = GUI.color;
-            GUI.color = gray;
+            var c = GUI.color;
+            GUI.color = new Color(0.6f, 0.6f, 0.6f);
             foreach (var name in _report.缺失形状列表)
-            {
                 EditorGUILayout.LabelField($"- {name}");
-            }
-            GUI.color = oldColor;
+            GUI.color = c;
             EditorGUI.indentLevel--;
         }
 
@@ -142,50 +128,54 @@ namespace MMDBlendShapeChecker
         {
             EditorGUILayout.BeginVertical(EditorStyles.helpBox);
 
+            // 标题行: 图标 + 名称 + 匹配 + 有效权重
             EditorGUILayout.BeginHorizontal();
 
-            var oldColor = GUI.color;
-            string icon;
-            Color iconColor;
+            var c = GUI.color;
             switch (item.严重程度)
             {
                 case 检测严重程度.严重:
-                    icon = "■";
-                    iconColor = new Color(1f, 0.2f, 0.2f);
+                    GUI.color = new Color(1f, 0.2f, 0.2f);
+                    EditorGUILayout.LabelField("■", EditorStyles.boldLabel, GUILayout.Width(16));
                     break;
                 case 检测严重程度.警告:
-                    icon = "▲";
-                    iconColor = new Color(1f, 0.6f, 0.1f);
+                    GUI.color = new Color(1f, 0.6f, 0.1f);
+                    EditorGUILayout.LabelField("▲", EditorStyles.boldLabel, GUILayout.Width(16));
                     break;
                 case 检测严重程度.注意:
-                    icon = "●";
-                    iconColor = new Color(0.3f, 0.6f, 1f);
+                    GUI.color = new Color(0.3f, 0.6f, 1f);
+                    EditorGUILayout.LabelField("●", EditorStyles.boldLabel, GUILayout.Width(16));
                     break;
                 default:
-                    icon = "✓";
-                    iconColor = new Color(0.2f, 0.7f, 0.2f);
+                    GUI.color = new Color(0.2f, 0.7f, 0.2f);
+                    EditorGUILayout.LabelField("✓", EditorStyles.boldLabel, GUILayout.Width(16));
                     break;
             }
+            GUI.color = c;
 
-            GUI.color = iconColor;
-            EditorGUILayout.LabelField($"{icon} {item.形状名称}", EditorStyles.boldLabel, GUILayout.Width(150));
-            GUI.color = oldColor;
+            EditorGUILayout.LabelField(item.形状名称, EditorStyles.boldLabel, GUILayout.Width(120));
+            EditorGUILayout.LabelField(item.中文说明, GUILayout.Width(100));
 
-            EditorGUILayout.LabelField(item.中文说明, GUILayout.Width(120));
-            GUILayout.FlexibleSpace();
-
-            if (item.主数值 > 0.0001f)
+            // 匹配信息
+            if (!string.IsNullOrEmpty(item.匹配原始形状))
             {
-                var numStyle = new GUIStyle(EditorStyles.miniLabel) { alignment = TextAnchor.MiddleRight };
-                EditorGUILayout.LabelField($"值: {item.主数值:F2}", numStyle, GUILayout.Width(80));
+                GUI.color = new Color(0.5f, 0.9f, 0.5f);
+                EditorGUILayout.LabelField($"← {item.匹配原始形状} (基值:{item.原始基值:F0}) 有效:{item.有效权重:F0}%",
+                    EditorStyles.miniLabel, GUILayout.Width(240));
+                GUI.color = c;
             }
 
             EditorGUILayout.EndHorizontal();
 
-            var descStyle = new GUIStyle(EditorStyles.miniLabel) { wordWrap = true, richText = true };
-            foreach (var detail in item.问题详情)
+            // 详情
+            var ds = new GUIStyle(EditorStyles.miniLabel) { wordWrap = true };
+            foreach (var d in item.问题详情)
+                EditorGUILayout.LabelField($"  {d}", ds);
+
+            // 影响基值
+            if (item.影响基值列表.Count > 0)
             {
-                EditorGUILayout.LabelField($"  {detail}", descStyle);
+                EditorGUILayout.LabelField($"  影响基值: {string.Join(", ", item.影响基值列表)}", ds);
             }
 
             EditorGUILayout.EndVertical();

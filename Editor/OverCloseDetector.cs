@@ -1,4 +1,3 @@
-using System;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
@@ -21,6 +20,10 @@ namespace MMDBlendShapeChecker
         public 检测严重程度 严重程度;
         public List<string> 问题详情 = new List<string>();
         public float 主数值;
+        public string 匹配原始形状;
+        public float 有效权重;
+        public float 原始基值;
+        public List<string> 影响基值列表 = new List<string>();
     }
 
     public class 全面检测报告
@@ -31,12 +34,12 @@ namespace MMDBlendShapeChecker
         public string 错误信息;
         public int 总形状数;
         public int MMD形状数;
+        public int 存在基值的形状数;
     }
 
     public static class OverCloseDetector
     {
-        private const float 最大检测权重 = 200f;
-        private const float 外推步进 = 20f;
+        private const float 最大检测权重 = 250f;
 
         public static 全面检测报告 执行全面检测(SkinnedMeshRenderer faceRenderer)
         {
@@ -53,689 +56,652 @@ namespace MMDBlendShapeChecker
 
             var neutralV = mesh.vertices;
             var neutralN = mesh.normals;
-            var faceBounds = 计算面部边界(neutralV);
+            int vCount = neutralV.Length;
 
-            var 眼部区域 = new 眼部区域信息();
-            var 嘴部区域 = new 嘴部区域信息();
-            var 眉部区域 = new 眉部区域信息();
-
-            分析顶点区域(neutralV, faceBounds, 眼部区域, 嘴部区域, 眉部区域);
-
-            var deltaV = new Vector3[neutralV.Length];
-            var deltaN = new Vector3[neutralV.Length];
-            var deltaT = new Vector3[neutralV.Length];
-
+            // 第1步: 分类所有形状
+            var mmdIndices = new List<int>();
+            var nativeIndices = new List<int>();
+            var nativeWeights = new Dictionary<int, float>();
             for (int i = 0; i < mesh.blendShapeCount; i++)
             {
                 string name = mesh.GetBlendShapeName(i);
-
-                if (MmdShapeDatabase.名称到信息映射.TryGetValue(name, out var info))
+                float w = faceRenderer.GetBlendShapeWeight(i);
+                if (MmdShapeDatabase.名称到信息映射.ContainsKey(name))
                 {
-                    report.MMD形状数++;
-                    int frameCount = mesh.GetBlendShapeFrameCount(i);
-                    if (frameCount < 1) continue;
-
-                    mesh.GetBlendShapeFrameVertices(i, 0, deltaV, deltaN, deltaT);
-
-                    var result = new 检测结果
-                    {
-                        形状名称 = name,
-                        中文说明 = info.中文说明,
-                        分类 = info.分类,
-                        严重程度 = 检测严重程度.正常
-                    };
-
-                    if ((info.分类 & MmdShapeCategory.眼部) != 0)
-                    {
-                        检测眼部(neutralV, neutralN, deltaV, deltaN, info, result, 眼部区域, faceBounds);
-                    }
-
-                    if ((info.分类 & MmdShapeCategory.嘴部) != 0)
-                    {
-                        检测嘴部(neutralV, neutralN, deltaV, deltaN, info, result, 嘴部区域, faceBounds);
-                    }
-
-                    if ((info.分类 & MmdShapeCategory.眉毛) != 0 && (info.分类 & MmdShapeCategory.眼部) == 0)
-                    {
-                        检测眉毛(neutralV, deltaV, deltaN, info, result, 眉部区域, faceBounds);
-                    }
-
-                    if (result.问题详情.Count == 0)
-                    {
-                        result.问题详情.Add("未检测到异常");
-                    }
-
-                    report.所有结果.Add(result);
+                    mmdIndices.Add(i);
                 }
+                else
+                {
+                    nativeIndices.Add(i);
+                    if (w > 0.001f)
+                    {
+                        nativeWeights[i] = w;
+                        report.存在基值的形状数++;
+                    }
+                }
+            }
+            report.MMD形状数 = mmdIndices.Count;
+
+            // 第2步: 计算基值变形 (所有非MMD形状在当前权重下的叠加)
+            var baseDeformedV = new Vector3[vCount];
+            var baseDeformedN = new Vector3[vCount];
+            System.Array.Copy(neutralV, baseDeformedV, vCount);
+            System.Array.Copy(neutralN, baseDeformedN, vCount);
+
+            var deltaV = new Vector3[vCount];
+            var deltaN = new Vector3[vCount];
+            var deltaT = new Vector3[vCount];
+
+            foreach (var kv in nativeWeights)
+            {
+                int idx = kv.Key;
+                float w = kv.Value;
+                if (mesh.GetBlendShapeFrameCount(idx) < 1) continue;
+                mesh.GetBlendShapeFrameVertices(idx, 0, deltaV, deltaN, deltaT);
+                float scale = w / 100f;
+                for (int v = 0; v < vCount; v++)
+                {
+                    baseDeformedV[v].x += deltaV[v].x * scale;
+                    baseDeformedV[v].y += deltaV[v].y * scale;
+                    baseDeformedV[v].z += deltaV[v].z * scale;
+                    baseDeformedN[v].x += deltaN[v].x * scale;
+                    baseDeformedN[v].y += deltaN[v].y * scale;
+                    baseDeformedN[v].z += deltaN[v].z * scale;
+                }
+            }
+
+            // 第3步: 用 eye_close / mouth_a 等自适应识别面部区域
+            var eyeRegion = 自适应识别眼部区域(mesh, neutralV, baseDeformedV);
+            var mouthRegion = 自适应识别嘴部区域(mesh, neutralV, baseDeformedV);
+            var browRegion = 自适应识别眉部区域(mesh, neutralV, baseDeformedV, eyeRegion);
+
+            // 第4步: 对每个MMD形状执行检测
+            for (int mmdIdx = 0; mmdIdx < mmdIndices.Count; mmdIdx++)
+            {
+                int i = mmdIndices[mmdIdx];
+                string name = mesh.GetBlendShapeName(i);
+
+                if (!MmdShapeDatabase.名称到信息映射.TryGetValue(name, out var info)) continue;
+                if (mesh.GetBlendShapeFrameCount(i) < 1) continue;
+
+                mesh.GetBlendShapeFrameVertices(i, 0, deltaV, deltaN, deltaT);
+
+                var result = new 检测结果
+                {
+                    形状名称 = name,
+                    中文说明 = info.中文说明,
+                    分类 = info.分类,
+                    严重程度 = 检测严重程度.正常
+                };
+
+                // 匹配原始形状
+                (string matchedName, int matchedIdx, float matchedWeight) = 匹配原始形状(
+                    mesh, deltaV, nativeIndices, faceRenderer);
+                result.匹配原始形状 = matchedName;
+                result.原始基值 = matchedWeight;
+                result.有效权重 = 100f + matchedWeight;
+
+                // 收集影响基值
+                foreach (var kv in nativeWeights)
+                {
+                    int ni = kv.Key;
+                    if (ni == matchedIdx) continue;
+                    string nname = mesh.GetBlendShapeName(ni);
+                    float nw = kv.Value;
+                    // 只记录同区域的
+                    if ((info.分类 & MmdShapeCategory.眼部) != 0 && eyeRegion.包含顶点(ni)) continue; // 太粗糙, 直接用名称匹配
+                    result.影响基值列表.Add($"{nname}={nw:F0}");
+                }
+
+                // 执行区域检测
+                if ((info.分类 & MmdShapeCategory.眼部) != 0 && info.是闭合类)
+                {
+                    检测眼部(baseDeformedV, baseDeformedN, deltaV, deltaN,
+                        info, result, eyeRegion, result.有效权重);
+                }
+
+                if ((info.分类 & MmdShapeCategory.嘴部) != 0)
+                {
+                    检测嘴部(baseDeformedV, baseDeformedN, deltaV, deltaN,
+                        info, result, mouthRegion, result.有效权重);
+                }
+
+                if ((info.分类 & MmdShapeCategory.眉毛) != 0 && (info.分类 & MmdShapeCategory.眼部) == 0)
+                {
+                    检测眉毛(baseDeformedV, deltaV, info, result, browRegion, result.有效权重);
+                }
+
+                if (result.问题详情.Count == 0)
+                    result.问题详情.Add("未检测到异常");
+
+                report.所有结果.Add(result);
             }
 
             检测缺失形状(mesh, report);
             return report;
         }
 
-        // ===== 区域分析 =====
+        // ===== 自适应区域识别 =====
 
-        private static Bounds 计算面部边界(Vector3[] verts)
-        {
-            var b = new Bounds(verts[0], Vector3.zero);
-            foreach (var v in verts) b.Encapsulate(v);
-            return b;
-        }
-
-        private class 眼部区域信息
+        private class 眼部区域
         {
             public List<int> 左眼上睑 = new List<int>();
             public List<int> 左眼下睑 = new List<int>();
             public List<int> 右眼上睑 = new List<int>();
             public List<int> 右眼下睑 = new List<int>();
-            public float 中性平均眼裂;
-            public float 中性眼角宽度;
+            public List<int> 所有眼睑 = new List<int>();
+            public float 中性眼裂;
+            public float 眼角宽度;
         }
 
-        private class 嘴部区域信息
+        private class 嘴部区域
         {
             public List<int> 上唇 = new List<int>();
             public List<int> 下唇 = new List<int>();
-            public float 中性平均唇距;
+            public float 中性唇距;
         }
 
-        private class 眉部区域信息
+        private class 眉部区域
         {
             public List<int> 眉顶点 = new List<int>();
-            public float 中性眉高;
         }
 
-        private static void 分析顶点区域(Vector3[] neutral, Bounds bounds,
-            眼部区域信息 eye, 嘴部区域信息 mouth, 眉部区域信息 brow)
+        private static 眼部区域 自适应识别眼部区域(Mesh mesh, Vector3[] neutral, Vector3[] baseDeformed)
         {
-            float faceH = bounds.size.y;
-            float faceW = bounds.size.x;
-            float minY = bounds.min.y;
-            float minX = bounds.min.x;
-            float cx = bounds.center.x;
-            float cz = bounds.center.z;
+            var eye = new 眼部区域();
 
-            for (int i = 0; i < neutral.Length; i++)
+            // 在native形状中找 eye_close 或相似名称
+            int refIdx = 查找关键形状(mesh, new[] { "eye_close", "eye_close_L", "eye close",
+                "vrc.blink (3.0)", "vrc.blink", "vrc_blink" });
+            if (refIdx < 0)
+                refIdx = 查找关键形状(mesh, new[] { "vrc.v_blink", "blink", "eye_joy" });
+
+            if (refIdx < 0) return eye;
+
+            float[] mags = new float[neutral.Length];
+            mesh.GetBlendShapeFrameVertices(refIdx, 0,
+                new Vector3[neutral.Length], new Vector3[neutral.Length], new Vector3[neutral.Length]);
+            // Re-read after GetBlendShapeFrameVertices overwrites
+            var refDelta = new Vector3[neutral.Length];
+            mesh.GetBlendShapeFrameVertices(refIdx, 0, refDelta, new Vector3[neutral.Length], new Vector3[neutral.Length]);
+
+            for (int v = 0; v < neutral.Length; v++)
+                mags[v] = refDelta[v].magnitude;
+
+            // 取位移最大的前 15% 顶点作为眼部候选
+            float threshold = 取百分位阈值(mags, 0.85f);
+            var eyeCandidates = new List<int>();
+            for (int v = 0; v < neutral.Length; v++)
+                if (mags[v] > threshold) eyeCandidates.Add(v);
+
+            if (eyeCandidates.Count < 10) return eye;
+
+            // 按X分左右眼
+            float cx = neutral[eyeCandidates[0]].x;
+            foreach (int v in eyeCandidates) cx += neutral[v].x;
+            cx /= eyeCandidates.Count;
+
+            foreach (int v in eyeCandidates)
             {
-                var v = neutral[i];
-                float yR = (v.y - minY) / faceH;
-                float xAbs = Mathf.Abs(v.x - cx);
-                float xR = xAbs / (faceW * 0.5f);
+                float x = baseDeformed[v].x;
+                float y = baseDeformed[v].y;
 
-                if (v.z < cz - faceW * 0.25f) continue;
+                // Y中位数分割上下睑
+                var list = x < cx ? (y > 取区域中位数(baseDeformed, eyeCandidates, v => v < cx, v2 => baseDeformed[v2].y)
+                    ? eye.左眼上睑 : eye.左眼下睑)
+                    : (y > 取区域中位数(baseDeformed, eyeCandidates, v2 => v2 >= cx, v2 => baseDeformed[v2].y)
+                    ? eye.右眼上睑 : eye.右眼下睑);
 
-                // 眉部: Y=65%~88%
-                if (yR > 0.65f && yR < 0.88f && xR < 0.52f)
-                    brow.眉顶点.Add(i);
+                list.Add(v);
+                eye.所有眼睑.Add(v);
+            }
 
-                // 眼部: Y=50%~72%, X=3%~40%
-                if (yR > 0.50f && yR < 0.72f && xR > 0.03f && xR < 0.40f)
+            eye.中性眼裂 = (计算眼裂(baseDeformed, eye.左眼上睑, eye.左眼下睑)
+                          + 计算眼裂(baseDeformed, eye.右眼上睑, eye.右眼下睑)) / 2f;
+            eye.眼角宽度 = 计算眼角宽度(baseDeformed, eye);
+
+            return eye;
+        }
+
+        private static 嘴部区域 自适应识别嘴部区域(Mesh mesh, Vector3[] neutral, Vector3[] baseDeformed)
+        {
+            var mouth = new 嘴部区域();
+
+            int refIdx = 查找关键形状(mesh, new[] { "mouth_a", "mouth_a (no tooth)", "あ",
+                "vrc.v_aa", "vrc_v_aa", "mouth_o", "お" });
+            if (refIdx < 0) return mouth;
+
+            var refDelta = new Vector3[neutral.Length];
+            mesh.GetBlendShapeFrameVertices(refIdx, 0, refDelta, new Vector3[neutral.Length], new Vector3[neutral.Length]);
+
+            float[] mags = new float[neutral.Length];
+            for (int v = 0; v < neutral.Length; v++) mags[v] = refDelta[v].magnitude;
+
+            float threshold = 取百分位阈值(mags, 0.85f);
+            var candidates = new List<int>();
+            for (int v = 0; v < neutral.Length; v++)
+                if (mags[v] > threshold) candidates.Add(v);
+
+            if (candidates.Count < 6) return mouth;
+
+            float medianY = 取区域中位数(baseDeformed, candidates, _ => true, v => baseDeformed[v].y);
+            foreach (int v in candidates)
+            {
+                if (baseDeformed[v].y > medianY)
+                    mouth.上唇.Add(v);
+                else
+                    mouth.下唇.Add(v);
+            }
+
+            mouth.中性唇距 = 计算眼裂(baseDeformed, mouth.上唇, mouth.下唇);
+            return mouth;
+        }
+
+        private static 眉部区域 自适应识别眉部区域(Mesh mesh, Vector3[] neutral, Vector3[] baseDeformed, 眼部区域 eye)
+        {
+            var brow = new 眉部区域();
+
+            int refIdx = 查找关键形状(mesh, new[] { "brow_joy", "brow_anger", "brow_up",
+                "上", "怒り", "brow_surprised", "brow_down" });
+            if (refIdx < 0) return brow;
+
+            var refDelta = new Vector3[neutral.Length];
+            mesh.GetBlendShapeFrameVertices(refIdx, 0, refDelta, new Vector3[neutral.Length], new Vector3[neutral.Length]);
+
+            float[] mags = new float[neutral.Length];
+            for (int v = 0; v < neutral.Length; v++) mags[v] = refDelta[v].magnitude;
+
+            float threshold = 取百分位阈值(mags, 0.85f);
+            for (int v = 0; v < neutral.Length; v++)
+                if (mags[v] > threshold && !eye.所有眼睑.Contains(v))
+                    brow.眉顶点.Add(v);
+
+            return brow;
+        }
+
+        private static int 查找关键形状(Mesh mesh, string[] candidates)
+        {
+            for (int i = 0; i < mesh.blendShapeCount; i++)
+            {
+                string name = mesh.GetBlendShapeName(i).ToLower().Replace(" ", "_");
+                foreach (var c in candidates)
+                    if (name == c.ToLower().Replace(" ", "_") && mesh.GetBlendShapeFrameCount(i) >= 1)
+                        return i;
+            }
+            return -1;
+        }
+
+        private static float 取百分位阈值(float[] values, float percentile)
+        {
+            var sorted = new List<float>(values);
+            sorted.Sort();
+            int idx = Mathf.Clamp((int)(sorted.Count * percentile), 0, sorted.Count - 1);
+            return sorted[idx];
+        }
+
+        private static float 取区域中位数(Vector3[] positions, List<int> indices,
+            System.Func<int, bool> filter, System.Func<int, float> selector)
+        {
+            var vals = new List<float>();
+            foreach (int i in indices)
+                if (filter(i)) vals.Add(selector(i));
+            if (vals.Count == 0) return 0;
+            vals.Sort();
+            return vals[vals.Count / 2];
+        }
+
+        private static float 计算眼裂(Vector3[] verts, List<int> upper, List<int> lower)
+        {
+            if (upper.Count < 1 || lower.Count < 1) return 0;
+            float uMin = float.MaxValue;
+            foreach (int i in upper) if (verts[i].y < uMin) uMin = verts[i].y;
+            float lMax = float.MinValue;
+            foreach (int i in lower) if (verts[i].y > lMax) lMax = verts[i].y;
+            return uMin - lMax;
+        }
+
+        private static float 计算眼角宽度(Vector3[] verts, 眼部区域 eye)
+        {
+            float lMin = float.MaxValue, lMax = float.MinValue;
+            float rMin = float.MaxValue, rMax = float.MinValue;
+            foreach (int i in eye.左眼上睑.Concat(eye.左眼下睑))
+            {
+                if (verts[i].x < lMin) lMin = verts[i].x;
+                if (verts[i].x > lMax) lMax = verts[i].x;
+            }
+            foreach (int i in eye.右眼上睑.Concat(eye.右眼下睑))
+            {
+                if (verts[i].x < rMin) rMin = verts[i].x;
+                if (verts[i].x > rMax) rMax = verts[i].x;
+            }
+            return ((lMax - lMin) + (rMax - rMin)) / 2f;
+        }
+
+        // ===== 形状匹配 =====
+
+        private static (string name, int index, float weight) 匹配原始形状(
+            Mesh mesh, Vector3[] mmdDelta, List<int> nativeIndices, SkinnedMeshRenderer faceRenderer)
+        {
+            var nativeDelta = new Vector3[mmdDelta.Length];
+            var bestIdx = -1;
+            float bestOverlap = 0f;
+
+            foreach (int ni in nativeIndices)
+            {
+                if (mesh.GetBlendShapeFrameCount(ni) < 1) continue;
+                mesh.GetBlendShapeFrameVertices(ni, 0, nativeDelta, new Vector3[mmdDelta.Length], new Vector3[mmdDelta.Length]);
+
+                int matchingVerts = 0;
+                for (int v = 0; v < mmdDelta.Length; v++)
                 {
-                    if (v.x < cx)
-                    {
-                        if (yR > 0.58f) eye.左眼上睑.Add(i);
-                        else eye.左眼下睑.Add(i);
-                    }
-                    else
-                    {
-                        if (yR > 0.58f) eye.右眼上睑.Add(i);
-                        else eye.右眼下睑.Add(i);
-                    }
+                    float dx = mmdDelta[v].x - nativeDelta[v].x;
+                    float dy = mmdDelta[v].y - nativeDelta[v].y;
+                    float dz = mmdDelta[v].z - nativeDelta[v].z;
+                    if (dx * dx + dy * dy + dz * dz < 0.000001f) matchingVerts++;
                 }
-
-                // 嘴部: Y=25%~48%, X<38%
-                if (yR > 0.25f && yR < 0.48f && xR < 0.38f)
+                float overlap = (float)matchingVerts / mmdDelta.Length;
+                if (overlap > bestOverlap && overlap > 0.95f)
                 {
-                    if (yR > 0.36f) mouth.上唇.Add(i);
-                    else mouth.下唇.Add(i);
+                    bestOverlap = overlap;
+                    bestIdx = ni;
                 }
             }
 
-            eye.中性平均眼裂 = 计算平均眼裂(neutral, eye.左眼上睑, eye.左眼下睑)
-                              + 计算平均眼裂(neutral, eye.右眼上睑, eye.右眼下睑);
-            eye.中性平均眼裂 /= 2f;
-            eye.中性眼角宽度 = 计算眼角宽度(neutral, eye);
-
-            mouth.中性平均唇距 = 计算平均唇距(neutral, mouth.上唇, mouth.下唇);
-
-            if (brow.眉顶点.Count > 0)
+            if (bestIdx >= 0)
             {
-                float sum = 0;
-                foreach (int i in brow.眉顶点) sum += neutral[i].y;
-                brow.中性眉高 = sum / brow.眉顶点.Count;
+                string name = mesh.GetBlendShapeName(bestIdx);
+                float w = faceRenderer.GetBlendShapeWeight(bestIdx);
+                return (name, bestIdx, w);
             }
+            return ("", -1, 0);
+        }
+
+        // ===== 眼睑配对 =====
+
+        private struct 眼睑配对 { public int 上; public int 下; public float 上Y; public float 下Y; }
+
+        private static List<眼睑配对> 建立配对(Vector3[] verts, List<int> upper, List<int> lower, int buckets)
+        {
+            var pairs = new List<眼睑配对>();
+            if (upper.Count < 2 || lower.Count < 2) return pairs;
+
+            var all = new List<int>(); all.AddRange(upper); all.AddRange(lower);
+            float minX = float.MaxValue, maxX = float.MinValue;
+            foreach (int i in all) { if (verts[i].x < minX) minX = verts[i].x; if (verts[i].x > maxX) maxX = verts[i].x; }
+            float range = maxX - minX;
+            if (range < 0.0001f) return pairs;
+
+            for (int b = 0; b < buckets; b++)
+            {
+                float lo = minX + range * b / buckets;
+                float hi = minX + range * (b + 1) / buckets;
+
+                int bestU = -1; float uMin = float.MaxValue;
+                foreach (int i in upper)
+                    if (verts[i].x >= lo && (verts[i].x < hi || b == buckets - 1))
+                        if (verts[i].y < uMin) { uMin = verts[i].y; bestU = i; }
+
+                int bestL = -1; float lMax = float.MinValue;
+                foreach (int i in lower)
+                    if (verts[i].x >= lo && (verts[i].x < hi || b == buckets - 1))
+                        if (verts[i].y > lMax) { lMax = verts[i].y; bestL = i; }
+
+                if (bestU >= 0 && bestL >= 0)
+                    pairs.Add(new 眼睑配对 { 上 = bestU, 下 = bestL, 上Y = uMin, 下Y = lMax });
+            }
+            return pairs;
         }
 
         // ===== 眼部检测 =====
 
-        private static void 检测眼部(Vector3[] neutral, Vector3[] neutralN,
+        private static void 检测眼部(Vector3[] baseV, Vector3[] baseN,
             Vector3[] deltaV, Vector3[] deltaN,
-            MmdShapeInfo info, 检测结果 result, 眼部区域信息 eye, Bounds faceBounds)
+            MmdShapeInfo info, 检测结果 result, 眼部区域 eye, float effectiveWeight)
         {
-            if (!info.是闭合类) return;
+            if (eye.左眼上睑.Count < 3 || eye.左眼下睑.Count < 3) return;
+            if (eye.右眼上睑.Count < 3 || eye.右眼下睑.Count < 3) return;
 
-            bool hasData = (eye.左眼上睑.Count >= 3 && eye.左眼下睑.Count >= 3)
-                        || (eye.右眼上睑.Count >= 3 && eye.右眼下睑.Count >= 3);
-            if (!hasData) return;
+            int vCount = baseV.Length;
+            var currentV = new Vector3[vCount];
+            var currentN = new Vector3[vCount];
 
-            float safeCloseDist = eye.中性平均眼裂 * 1.0f;
+            float safeDist = eye.中性眼裂;
+            if (safeDist < 0.0001f) safeDist = 0.01f;
 
             float maxNegDepth = 0f;
             float maxStrain = 0f;
-            int maxNegBucketCount = 0;
-            int pairTotal = 0;
-            int negPairCount = 0;
+            int negPairs = 0, totalPairs = 0;
+            int extrapNegMax = 0;
 
-            // 分桶配对检测：按X轴等分为8个桶
-            int bucketCount = 8;
-
-            var leftPairs = 建立眼睑配对(neutral, eye.左眼上睑, eye.左眼下睑, bucketCount);
-            var rightPairs = 建立眼睑配对(neutral, eye.右眼上睑, eye.右眼下睑, bucketCount);
-
-            foreach (var pairs in new[] { leftPairs, rightPairs })
+            // 在 base_deformed + mmd_delta*(w/100) 状态下检测
+            float[] testWeights = { effectiveWeight, effectiveWeight * 1.2f, effectiveWeight * 1.5f, effectiveWeight * 2.0f };
+            for (int tw = 0; tw < testWeights.Length; tw++)
             {
-                foreach (var pair in pairs)
-                {
-                    if (pair.上Y < pair.下Y) continue; // 无效配对
-                    float neutralGap = pair.上Y - pair.下Y;
-                    if (neutralGap <= 0.001f) continue;
-
-                    pairTotal++;
-                    float upperDisplaced = neutral[pair.上顶点].y + deltaV[pair.上顶点].y;
-                    float lowerDisplaced = neutral[pair.下顶点].y + deltaV[pair.下顶点].y;
-                    float gap100 = upperDisplaced - lowerDisplaced;
-
-                    if (gap100 < 0)
-                    {
-                        negPairCount++;
-                        float depth = -gap100;
-                        if (depth > maxNegDepth) maxNegDepth = depth;
-                    }
-                }
-            }
-
-            // 100% 权重应变计算
-            {
-                float totalDisp = 0f;
-                int dispCount = 0;
-                var allEyeVerts = eye.左眼上睑.Concat(eye.右眼上睑).Concat(eye.左眼下睑).Concat(eye.右眼下睑);
-                foreach (var idx in allEyeVerts)
-                {
-                    totalDisp += deltaV[idx].magnitude;
-                    dispCount++;
-                }
-                if (dispCount > 0 && safeCloseDist > 0.0001f)
-                {
-                    maxStrain = (totalDisp / dispCount) / safeCloseDist;
-                }
-            }
-
-            // 外推检测: 120%, 150%, 200%
-            float[] extrapWeights = { 120f, 150f, 200f };
-            foreach (float w in extrapWeights)
-            {
+                float w = Mathf.Min(testWeights[tw], 最大检测权重);
                 float scale = w / 100f;
-                int wNegCount = 0;
 
-                foreach (var pairs in new[] { leftPairs, rightPairs })
+                for (int v = 0; v < vCount; v++)
                 {
-                    foreach (var pair in pairs)
+                    currentV[v].x = baseV[v].x + deltaV[v].x * scale;
+                    currentV[v].y = baseV[v].y + deltaV[v].y * scale;
+                    currentV[v].z = baseV[v].z + deltaV[v].z * scale;
+                }
+
+                var lPairs = 建立配对(currentV, eye.左眼上睑, eye.左眼下睑, 8);
+                var rPairs = 建立配对(currentV, eye.右眼上睑, eye.右眼下睑, 8);
+
+                int wNeg = 0;
+                float wDepth = 0f;
+
+                foreach (var p in lPairs.Concat(rPairs))
+                {
+                    if (tw == 0) totalPairs++;
+                    float gap = currentV[p.上].y - currentV[p.下].y;
+                    if (gap < 0)
                     {
-                        if (pair.上Y < pair.下Y) continue;
-                        float neutralGap = pair.上Y - pair.下Y;
-                        if (neutralGap <= 0.001f) continue;
-
-                        float upperExtrap = neutral[pair.上顶点].y + deltaV[pair.上顶点].y * scale;
-                        float lowerExtrap = neutral[pair.下顶点].y + deltaV[pair.下顶点].y * scale;
-                        float gapExtrap = upperExtrap - lowerExtrap;
-
-                        if (gapExtrap < 0) wNegCount++;
+                        if (tw == 0) { negPairs++; }
+                        wNeg++;
+                        float d = -gap;
+                        if (d > wDepth) wDepth = d;
+                        if (tw == 0 && d > maxNegDepth) maxNegDepth = d;
                     }
                 }
+                if (wNeg > extrapNegMax) extrapNegMax = wNeg;
 
-                if (wNegCount > maxNegBucketCount) maxNegBucketCount = wNegCount;
-
-                float totalDisp = 0f;
-                int dispCount = 0;
-                foreach (var idx in eye.左眼上睑.Concat(eye.右眼上睑).Concat(eye.左眼下睑).Concat(eye.右眼下睑))
+                // 应变
+                if (tw == 0)
                 {
-                    totalDisp += deltaV[idx].magnitude * scale;
-                    dispCount++;
-                }
-                if (dispCount > 0 && safeCloseDist > 0.0001f)
-                {
-                    float strain = (totalDisp / dispCount) / safeCloseDist;
-                    if (strain > maxStrain) maxStrain = strain;
+                    float sumMag = 0f;
+                    foreach (int i in eye.所有眼睑) sumMag += deltaV[i].magnitude * scale;
+                    maxStrain = sumMag / eye.所有眼睑.Count / safeDist;
                 }
             }
 
-            // 法线反转检测 (at weight 100)
-            int flippedNormals = 0;
-            foreach (var idx in eye.左眼上睑.Concat(eye.右眼上睑).Concat(eye.左眼下睑).Concat(eye.右眼下睑))
+            // 法线反转 (at effectiveWeight)
             {
-                var origN = neutralN[idx].normalized;
-                var deformedN = (neutralN[idx] + deltaN[idx]).normalized;
-                float dot = Vector3.Dot(origN, deformedN);
-                if (dot < 0f) flippedNormals++;
+                float scale = effectiveWeight / 100f;
+                int flipped = 0;
+                foreach (int i in eye.所有眼睑)
+                {
+                    float nx = baseN[i].x + deltaN[i].x * scale;
+                    float ny = baseN[i].y + deltaN[i].y * scale;
+                    float nz = baseN[i].z + deltaN[i].z * scale;
+                    float dot = baseN[i].x * nx + baseN[i].y * ny + baseN[i].z * nz;
+                    if (dot < 0) flipped++;
+                }
+                if (flipped > 3)
+                {
+                    result.严重程度 = 检测严重程度.严重;
+                    result.问题详情.Add($"法线反转: {flipped} 个顶点法线翻转");
+                }
             }
 
-            // 侧向挤压检测
-            float neutralCornersW = eye.中性眼角宽度;
-            float deformedCornersW = 计算眼角宽度(neutral, deltaV, eye);
-            float lateralStrain = neutralCornersW > 0.0001f
-                ? (neutralCornersW - deformedCornersW) / neutralCornersW : 0f;
+            // 侧向挤压
+            float baseWidth = eye.眼角宽度;
+            {
+                float scale = effectiveWeight / 100f;
+                float lMin = float.MaxValue, lMax = float.MinValue;
+                float rMin = float.MaxValue, rMax = float.MinValue;
+                foreach (int i in eye.左眼上睑.Concat(eye.左眼下睑))
+                {
+                    float x = baseV[i].x + deltaV[i].x * scale;
+                    if (x < lMin) lMin = x; if (x > lMax) lMax = x;
+                }
+                foreach (int i in eye.右眼上睑.Concat(eye.右眼下睑))
+                {
+                    float x = baseV[i].x + deltaV[i].x * scale;
+                    if (x < rMin) rMin = x; if (x > rMax) rMax = x;
+                }
+                float defWidth = ((lMax - lMin) + (rMax - rMin)) / 2f;
+                float lateral = baseWidth > 0.0001f ? (baseWidth - defWidth) / baseWidth : 0;
+                if (lateral > 0.15f)
+                {
+                    if (result.严重程度 < 检测严重程度.警告) result.严重程度 = 检测严重程度.警告;
+                    result.问题详情.Add($"眼角侧向挤压: {lateral * 100f:F0}%");
+                }
+            }
 
-            // --- 判定 ---
             result.主数值 = maxStrain;
 
-            // 法线反转 → 最严重
-            if (flippedNormals > 3)
+            if (negPairs > 0)
             {
                 result.严重程度 = 检测严重程度.严重;
-                result.问题详情.Add($"法线反转: {flippedNormals} 个眼睑顶点法线翻转(渲染黑斑)");
+                result.问题详情.Add($"眼睑穿透: {negPairs}/{totalPairs} 检测点, 深度 {maxNegDepth * 1000f:F1}mm");
             }
 
-            if (info.是闭合类 && pairTotal > 0 && negPairCount > 0)
+            if (extrapNegMax > 0 && negPairs == 0)
             {
-                result.严重程度 = Max(result.严重程度, 检测严重程度.严重);
-                result.问题详情.Add($"眼睑穿透(100%权重): {negPairCount}/{pairTotal} 个检测点穿透, 最大深度 {maxNegDepth * 1000f:F1}mm");
-            }
-
-            if (info.是闭合类 && maxNegBucketCount > 0)
-            {
-                if (result.严重程度 < 检测严重程度.严重)
-                    result.严重程度 = 检测严重程度.警告;
-                result.问题详情.Add($"超限外推穿透: 权重>100%时最多 {maxNegBucketCount} 处穿透(模拟至 {最大检测权重:F0}%)");
-            }
-
-            float closureRate = pairTotal > 0 ? (float)negPairCount / pairTotal * 100f : 0f;
-            if (info.是闭合类 && closureRate == 0f && pairTotal > 0)
-            {
-                // 检查是否接近穿透(闭合率接近100%但未侵入)
-                int nearCount = 0;
-                foreach (var pairs in new[] { leftPairs, rightPairs })
-                {
-                    foreach (var pair in pairs)
-                    {
-                        if (pair.上Y < pair.下Y) continue;
-                        float neutralGap = pair.上Y - pair.下Y;
-                        if (neutralGap <= 0.001f) continue;
-                        float upperD = neutral[pair.上顶点].y + deltaV[pair.上顶点].y;
-                        float lowerD = neutral[pair.下顶点].y + deltaV[pair.下顶点].y;
-                        float gap = upperD - lowerD;
-                        if (gap < neutralGap * 0.05f) nearCount++;
-                    }
-                }
-                if (nearCount > pairTotal * 0.6f)
-                {
-                    if (result.严重程度 < 检测严重程度.警告)
-                        result.严重程度 = 检测严重程度.警告;
-                    result.问题详情.Add($"高度闭合: {nearCount}/{pairTotal} 检测点已闭合 (接近穿透边界)");
-                }
+                if (result.严重程度 < 检测严重程度.警告) result.严重程度 = 检测严重程度.警告;
+                result.问题详情.Add($"超限穿透: 权重>{effectiveWeight:F0}% 时最多 {extrapNegMax} 处穿透");
             }
 
             if (maxStrain > 1.5f)
             {
-                result.严重程度 = Max(result.严重程度, 检测严重程度.警告);
-                result.问题详情.Add($"应变超标: 位移/安全闭合 = {maxStrain:F1}x (阈值1.5x)");
+                if (result.严重程度 < 检测严重程度.警告) result.严重程度 = 检测严重程度.警告;
+                result.问题详情.Add($"应变超标: {maxStrain:F1}x (阈值 1.5x)");
             }
             else if (maxStrain > 1.2f)
             {
-                if (result.严重程度 < 检测严重程度.注意)
-                    result.严重程度 = 检测严重程度.注意;
-                result.问题详情.Add($"应变偏高: 位移/安全闭合 = {maxStrain:F1}x");
+                if (result.严重程度 < 检测严重程度.注意) result.严重程度 = 检测严重程度.注意;
+                result.问题详情.Add($"应变偏高: {maxStrain:F1}x");
             }
-
-            if (lateralStrain < -0.15f)
-            {
-                if (result.严重程度 < 检测严重程度.警告)
-                    result.严重程度 = 检测严重程度.警告;
-                result.问题详情.Add($"眼角侧向挤压: {lateralStrain * -100f:F0}%宽度收缩");
-            }
-
-            if (result.问题详情.Count == 0 && info.是闭合类)
-            {
-                result.问题详情.Add($"眼睑闭合正常 (检测 {pairTotal} 点, 应变 {maxStrain:F2}x)");
-            }
-        }
-
-        private struct 眼睑配对
-        {
-            public int 上顶点;
-            public int 下顶点;
-            public float 上Y;
-            public float 下Y;
-        }
-
-        private static List<眼睑配对> 建立眼睑配对(Vector3[] neutral,
-            List<int> upperLid, List<int> lowerLid, int bucketCount)
-        {
-            var pairs = new List<眼睑配对>();
-            if (upperLid.Count < 2 || lowerLid.Count < 2) return pairs;
-
-            float minX = float.MaxValue, maxX = float.MinValue;
-            foreach (int i in upperLid.Concat(lowerLid))
-            {
-                if (neutral[i].x < minX) minX = neutral[i].x;
-                if (neutral[i].x > maxX) maxX = neutral[i].x;
-            }
-            float range = maxX - minX;
-            if (range < 0.0001f) return pairs;
-
-            for (int b = 0; b < bucketCount; b++)
-            {
-                float xLo = minX + range * b / bucketCount;
-                float xHi = minX + range * (b + 1) / bucketCount;
-
-                // 找到该桶内上睑最下点和下睑最上点
-                int bestU = -1;
-                float uMinY = float.MaxValue;
-                foreach (int i in upperLid)
-                {
-                    float x = neutral[i].x;
-                    if (x >= xLo && x < xHi || (b == bucketCount - 1 && x >= xLo && x <= xHi + 0.001f))
-                    {
-                        if (neutral[i].y < uMinY) { uMinY = neutral[i].y; bestU = i; }
-                    }
-                }
-
-                int bestL = -1;
-                float lMaxY = float.MinValue;
-                foreach (int i in lowerLid)
-                {
-                    float x = neutral[i].x;
-                    if (x >= xLo && x < xHi || (b == bucketCount - 1 && x >= xLo && x <= xHi + 0.001f))
-                    {
-                        if (neutral[i].y > lMaxY) { lMaxY = neutral[i].y; bestL = i; }
-                    }
-                }
-
-                if (bestU >= 0 && bestL >= 0)
-                {
-                    pairs.Add(new 眼睑配对
-                    {
-                        上顶点 = bestU,
-                        下顶点 = bestL,
-                        上Y = uMinY,
-                        下Y = lMaxY
-                    });
-                }
-            }
-            return pairs;
-        }
-
-        private static float 计算平均眼裂(Vector3[] neutral, List<int> upper, List<int> lower)
-        {
-            if (upper.Count < 1 || lower.Count < 1) return 0f;
-            float uMin = float.MaxValue;
-            foreach (int i in upper) if (neutral[i].y < uMin) uMin = neutral[i].y;
-            float lMax = float.MinValue;
-            foreach (int i in lower) if (neutral[i].y > lMax) lMax = neutral[i].y;
-            return uMin - lMax;
-        }
-
-        private static float 计算眼角宽度(Vector3[] neutral, 眼部区域信息 eye)
-        {
-            float lMinX = float.MaxValue, lMaxX = float.MinValue;
-            float rMinX = float.MaxValue, rMaxX = float.MinValue;
-            foreach (int i in eye.左眼上睑.Concat(eye.左眼下睑))
-            {
-                if (neutral[i].x < lMinX) lMinX = neutral[i].x;
-                if (neutral[i].x > lMaxX) lMaxX = neutral[i].x;
-            }
-            foreach (int i in eye.右眼上睑.Concat(eye.右眼下睑))
-            {
-                if (neutral[i].x < rMinX) rMinX = neutral[i].x;
-                if (neutral[i].x > rMaxX) rMaxX = neutral[i].x;
-            }
-            return (lMaxX - lMinX + rMaxX - rMinX) / 2f;
-        }
-
-        private static float 计算眼角宽度(Vector3[] neutral, Vector3[] delta, 眼部区域信息 eye)
-        {
-            float lMinX = float.MaxValue, lMaxX = float.MinValue;
-            float rMinX = float.MaxValue, rMaxX = float.MinValue;
-            foreach (int i in eye.左眼上睑.Concat(eye.左眼下睑))
-            {
-                float x = neutral[i].x + delta[i].x;
-                if (x < lMinX) lMinX = x;
-                if (x > lMaxX) lMaxX = x;
-            }
-            foreach (int i in eye.右眼上睑.Concat(eye.右眼下睑))
-            {
-                float x = neutral[i].x + delta[i].x;
-                if (x < rMinX) rMinX = x;
-                if (x > rMaxX) rMaxX = x;
-            }
-            return (lMaxX - lMinX + rMaxX - rMinX) / 2f;
         }
 
         // ===== 嘴部检测 =====
 
-        private static void 检测嘴部(Vector3[] neutral, Vector3[] neutralN,
+        private static void 检测嘴部(Vector3[] baseV, Vector3[] baseN,
             Vector3[] deltaV, Vector3[] deltaN,
-            MmdShapeInfo info, 检测结果 result, 嘴部区域信息 mouth, Bounds faceBounds)
+            MmdShapeInfo info, 检测结果 result, 嘴部区域 mouth, float effectiveWeight)
         {
             if (mouth.上唇.Count < 3 || mouth.下唇.Count < 3) return;
 
-            float faceH = faceBounds.size.y;
-            int bucketCount = 7;
-            var pairs = 建立唇部配对(neutral, mouth.上唇, mouth.下唇, bucketCount);
+            int vCount = baseV.Length;
+            var currentV = new Vector3[vCount];
+            float scale = effectiveWeight / 100f;
+            for (int v = 0; v < vCount; v++)
+            {
+                currentV[v].x = baseV[v].x + deltaV[v].x * scale;
+                currentV[v].y = baseV[v].y + deltaV[v].y * scale;
+                currentV[v].z = baseV[v].z + deltaV[v].z * scale;
+            }
 
+            var pairs = 建立配对(currentV, mouth.上唇, mouth.下唇, 7);
             int negCount = 0;
-            float maxNegDepth = 0f;
-            int totalPairs = 0;
-            float maxMag100 = 0f;
-
-            foreach (var pair in pairs)
+            float maxDepth = 0f;
+            foreach (var p in pairs)
             {
-                if (pair.上Y < pair.下Y) continue;
-                totalPairs++;
-                float upperD = neutral[pair.上顶点].y + deltaV[pair.上顶点].y;
-                float lowerD = neutral[pair.下顶点].y + deltaV[pair.下顶点].y;
-                float gap = upperD - lowerD;
-                if (gap < 0)
-                {
-                    negCount++;
-                    float d = -gap;
-                    if (d > maxNegDepth) maxNegDepth = d;
-                }
-                float mag = deltaV[pair.上顶点].magnitude + deltaV[pair.下顶点].magnitude;
-                if (mag > maxMag100) maxMag100 = mag;
+                float gap = currentV[p.上].y - currentV[p.下].y;
+                if (gap < 0) { negCount++; float d = -gap; if (d > maxDepth) maxDepth = d; }
             }
 
-            // 位移幅度
-            float dispRatio = maxMag100 / faceH * 100f;
-
-            // 外推检测
-            int extrapNegCount = 0;
-            float extrapMaxDepth = 0f;
-            foreach (float w in new[] { 150f, 200f })
-            {
-                float scale = w / 100f;
-                foreach (var pair in pairs)
-                {
-                    if (pair.上Y < pair.下Y) continue;
-                    float upperE = neutral[pair.上顶点].y + deltaV[pair.上顶点].y * scale;
-                    float lowerE = neutral[pair.下顶点].y + deltaV[pair.下顶点].y * scale;
-                    if (upperE < lowerE)
-                    {
-                        extrapNegCount++;
-                        float d = lowerE - upperE;
-                        if (d > extrapMaxDepth) extrapMaxDepth = d;
-                    }
-                }
-            }
-
-            // 法线反转
+            // 法线
             int flipped = 0;
             foreach (int i in mouth.上唇.Concat(mouth.下唇))
             {
-                var on = neutralN[i].normalized;
-                var dn = (neutralN[i] + deltaN[i]).normalized;
-                if (Vector3.Dot(on, dn) < 0f) flipped++;
+                float nx = baseN[i].x + deltaN[i].x * scale;
+                float ny = baseN[i].y + deltaN[i].y * scale;
+                float nz = baseN[i].z + deltaN[i].z * scale;
+                if (baseN[i].x * nx + baseN[i].y * ny + baseN[i].z * nz < 0) flipped++;
             }
 
-            result.主数值 = maxNegDepth;
+            result.主数值 = maxDepth;
 
             if (flipped > 3)
             {
                 result.严重程度 = 检测严重程度.严重;
-                result.问题详情.Add($"法线反转: {flipped} 个嘴部顶点法线翻转");
+                result.问题详情.Add($"法线反转: {flipped} 个嘴部顶点翻转");
             }
 
             if (info.是闭合类 && negCount > 0)
             {
-                result.严重程度 = Max(result.严重程度, 检测严重程度.严重);
-                result.问题详情.Add($"嘴唇穿透(100%): {negCount}/{totalPairs} 检测点, 深度 {maxNegDepth * 1000f:F1}mm");
+                result.严重程度 = 检测严重程度.严重;
+                result.问题详情.Add($"嘴唇穿透: {negCount}/{pairs.Count} 检测点, 深度 {maxDepth * 1000f:F1}mm");
             }
 
-            if (info.是闭合类 && extrapNegCount > 0)
+            // 外推
+            int extrapNeg = 0;
+            for (float ew = effectiveWeight * 1.5f; ew <= 最大检测权重; ew += 50f)
             {
-                if (result.严重程度 < 检测严重程度.警告)
-                    result.严重程度 = 检测严重程度.警告;
-                result.问题详情.Add($"超限穿透: 权重>100%时 {extrapNegCount} 处穿透");
+                float es = ew / 100f;
+                for (int v = 0; v < vCount; v++)
+                {
+                    currentV[v].x = baseV[v].x + deltaV[v].x * es;
+                    currentV[v].y = baseV[v].y + deltaV[v].y * es;
+                    currentV[v].z = baseV[v].z + deltaV[v].z * es;
+                }
+                foreach (var p in pairs)
+                    if (currentV[p.上].y < currentV[p.下].y) extrapNeg++;
             }
-
-            if (dispRatio > 15f)
+            if (extrapNeg > 0 && negCount == 0)
             {
-                if (result.严重程度 < 检测严重程度.警告)
-                    result.严重程度 = 检测严重程度.警告;
-                result.问题详情.Add($"位移过大: {dispRatio:F1}%面高");
+                if (result.严重程度 < 检测严重程度.警告) result.严重程度 = 检测严重程度.警告;
+                result.问题详情.Add($"超限穿透: 权重>{effectiveWeight:F0}%时 {extrapNeg} 处穿透");
             }
 
             if (result.问题详情.Count == 0)
-            {
-                result.问题详情.Add($"嘴部变形正常 (位移 {dispRatio:F1}%面高)");
-            }
-        }
-
-        private static List<眼睑配对> 建立唇部配对(Vector3[] neutral,
-            List<int> upper, List<int> lower, int bucketCount)
-        {
-            var pairs = new List<眼睑配对>();
-            if (upper.Count < 2 || lower.Count < 2) return pairs;
-            float minX = float.MaxValue, maxX = float.MinValue;
-            foreach (int i in upper.Concat(lower))
-            {
-                if (neutral[i].x < minX) minX = neutral[i].x;
-                if (neutral[i].x > maxX) maxX = neutral[i].x;
-            }
-            float range = maxX - minX;
-            if (range < 0.0001f) return pairs;
-            for (int b = 0; b < bucketCount; b++)
-            {
-                float xLo = minX + range * b / bucketCount;
-                float xHi = minX + range * (b + 1) / bucketCount;
-                int bestU = -1;
-                float uMinY = float.MaxValue;
-                foreach (int i in upper)
-                {
-                    float x = neutral[i].x;
-                    if (x >= xLo && x < xHi || (b == bucketCount - 1 && x >= xLo))
-                    {
-                        if (neutral[i].y < uMinY) { uMinY = neutral[i].y; bestU = i; }
-                    }
-                }
-                int bestL = -1;
-                float lMaxY = float.MinValue;
-                foreach (int i in lower)
-                {
-                    float x = neutral[i].x;
-                    if (x >= xLo && x < xHi || (b == bucketCount - 1 && x >= xLo))
-                    {
-                        if (neutral[i].y > lMaxY) { lMaxY = neutral[i].y; bestL = i; }
-                    }
-                }
-                if (bestU >= 0 && bestL >= 0)
-                    pairs.Add(new 眼睑配对 { 上顶点 = bestU, 下顶点 = bestL, 上Y = uMinY, 下Y = lMaxY });
-            }
-            return pairs;
-        }
-
-        private static float 计算平均唇距(Vector3[] neutral, List<int> upper, List<int> lower)
-        {
-            if (upper.Count < 1 || lower.Count < 1) return 0;
-            float uMin = float.MaxValue;
-            foreach (int i in upper) if (neutral[i].y < uMin) uMin = neutral[i].y;
-            float lMax = float.MinValue;
-            foreach (int i in lower) if (neutral[i].y > lMax) lMax = neutral[i].y;
-            return uMin - lMax;
+                result.问题详情.Add($"嘴部变形正常");
         }
 
         // ===== 眉毛检测 =====
 
-        private static void 检测眉毛(Vector3[] neutral, Vector3[] deltaV, Vector3[] deltaN,
-            MmdShapeInfo info, 检测结果 result, 眉部区域信息 brow, Bounds faceBounds)
+        private static void 检测眉毛(Vector3[] baseV, Vector3[] deltaV,
+            MmdShapeInfo info, 检测结果 result, 眉部区域 brow, float effectiveWeight)
         {
             if (brow.眉顶点.Count < 3) return;
 
-            float faceH = faceBounds.size.y;
-            float totalMag = 0;
-            float maxMag = 0;
-            int flipped = 0;
-            float neutralAvgY = 0;
-
+            float scale = effectiveWeight / 100f;
+            float maxMag = 0f;
             foreach (int i in brow.眉顶点)
             {
-                float mag = deltaV[i].magnitude;
-                totalMag += mag;
-                if (mag > maxMag) maxMag = mag;
-                neutralAvgY += neutral[i].y;
+                float m = deltaV[i].magnitude * scale;
+                if (m > maxMag) maxMag = m;
             }
-            neutralAvgY /= brow.眉顶点.Count;
 
-            float maxRatio = maxMag / faceH * 100f;
-            result.主数值 = maxRatio;
+            // 用 bounding box 参考
+            float minY = float.MaxValue, maxY = float.MinValue;
+            foreach (int i in brow.眉顶点) { if (baseV[i].y < minY) minY = baseV[i].y; if (baseV[i].y > maxY) maxY = baseV[i].y; }
+            float h = maxY - minY;
+            float ratio = h > 0.0001f ? maxMag / h * 100f : 0;
+            result.主数值 = maxMag;
 
-            // 外推
-            float extrapMax = 0;
-            foreach (float w in new[] { 150f, 200f })
+            if (ratio > 25f)
             {
-                float scale = w / 100f;
-                foreach (int i in brow.眉顶点)
-                {
-                    float mag = deltaV[i].magnitude * scale;
-                    if (mag > extrapMax) extrapMax = mag;
-                }
+                result.严重程度 = 检测严重程度.警告;
+                result.问题详情.Add($"眉毛位移超标: {ratio:F0}% 区域高度");
             }
-            float extrapRatio = extrapMax / faceH * 100f;
-
-            if (maxRatio > 12f)
-            {
-                result.严重程度 = Max(result.严重程度, 检测严重程度.警告);
-                result.问题详情.Add($"眉毛位移超标: {maxRatio:F1}%面高 (阈值12%)");
-            }
-
-            if (extrapRatio > 20f)
-            {
-                if (result.严重程度 < 检测严重程度.注意)
-                    result.严重程度 = 检测严重程度.注意;
-                result.问题详情.Add($"超限外推位移: 最大 {extrapRatio:F1}%面高");
-            }
-
-            if (result.问题详情.Count == 0)
-            {
-                result.问题详情.Add($"眉毛位移正常: {maxRatio:F1}%面高");
-            }
+            else if (result.问题详情.Count == 0)
+                result.问题详情.Add($"眉毛位移正常");
         }
 
         // ===== 缺失检测 =====
 
         private static void 检测缺失形状(Mesh mesh, 全面检测报告 report)
         {
-            var meshNames = new HashSet<string>();
-            for (int i = 0; i < mesh.blendShapeCount; i++)
-                meshNames.Add(mesh.GetBlendShapeName(i));
-
+            var names = new HashSet<string>();
+            for (int i = 0; i < mesh.blendShapeCount; i++) names.Add(mesh.GetBlendShapeName(i));
             foreach (var info in MmdShapeDatabase.标准形状列表)
-                if (!meshNames.Contains(info.日文名))
+                if (!names.Contains(info.日文名))
                     report.缺失形状列表.Add($"{info.日文名} ({info.中文说明})");
-        }
-
-        private static 检测严重程度 Max(检测严重程度 a, 检测严重程度 b)
-        {
-            return (int)a > (int)b ? a : b;
         }
     }
 }
