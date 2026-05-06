@@ -148,8 +148,6 @@ namespace MMDBlendShapeChecker
                     if (ni == matchedIdx) continue;
                     string nname = mesh.GetBlendShapeName(ni);
                     float nw = kv.Value;
-                    // 只记录同区域的
-                    if ((info.分类 & MmdShapeCategory.眼部) != 0 && eyeRegion.包含顶点(ni)) continue; // 太粗糙, 直接用名称匹配
                     result.影响基值列表.Add($"{nname}={nw:F0}");
                 }
 
