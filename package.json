@@ -1,0 +1,16 @@
+{
+    "name": "mmd-blendshape-scaler",
+    "displayName": "MMD BlendShape Scaler",
+    "version": "1.0.0",
+    "description": "Non-destructive MMD blendshape delta scaling tool for VRChat avatars. Preview and adjust MMD morph scales with live Scene View feedback, auto-applied at build time via NDMF.",
+    "unity": "2022.3",
+    "author": {
+        "name": "MMD BlendShape Scaler"
+    },
+    "vpmDependencies": {
+        "com.vrchat.avatars": ">=3.7.0",
+        "nadena.dev.ndmf": ">=1.7.4"
+    },
+    "url": "",
+    "repo": ""
+}
