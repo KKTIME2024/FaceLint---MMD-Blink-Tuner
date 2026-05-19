@@ -16,7 +16,9 @@ This tool lets you scale each MMD blend shape down (or up) so the final result l
 
 ## Install
 
-Drop `Runtime/` and `Editor/` into `Assets/VrcAvatarMmdBlinkFixer/`.
+**Method A (recommended):** Download `.unitypackage` from [Releases](https://github.com/KKTIME2024/vrc-avatar-mmd-blink-fixer/releases), drag into Unity Project window, import all.
+
+**Method B (manual):** Copy `Runtime/` and `Editor/` into `Assets/VrcAvatarMmdBlinkFixer/`.
 
 ## Usage
 
