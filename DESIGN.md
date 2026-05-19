@@ -1,74 +1,36 @@
-# MMD BlendShape 调节器 — 设计文档
+# MmdBlendShapeScaler — 设计文档
 
-**版本**: v6  
-**日期**: 2026-05-18  
-**状态**: 当前版本
+**版本**: v7 (NDMF 非破坏性架构)  
+**日期**: 2026-05-19  
 
 ---
 
 ## 1. 目的
 
-为 VRChat Avatar 制作者提供 MMD BlendShape 缩放因子的可视化调节工具。
+为 VRChat Avatar 制作者提供 **非破坏性 MMD BlendShape 缩放工具**。
 
-**解决的问题**: MMD 世界驱动会将 BlendShape 推至 weight=100。但 Avatar 的 native 形状（eye_close 等）已有非零基值，两者叠加导致过度闭合或其他不自然效果。需要为每个 MMD 形状确定合适的缩放因子（如まばたき→80%），供 make-it-mmd 插件使用。
+**解决的问题**: 捏脸后 Avatar 的 MMD blendshape（まばたき、あ、い等）在 MMD 世界驱动到 weight=100 时，与捏脸基值叠加导致过度闭合或不自然效果。需要将 MMD blendshape 的 delta 缩放到合适的比例。
 
-**不做的事**: 不自动检测"过闭合"。不修改 Avatar 的 Mesh 资产或 Renderer 权重。
+**核心能力**:
+- 可视化预览所有 MMD blendshape（缩略图 + Scene View 实时 3D）
+- 针对每个 MMD 形状独立设置缩放因子（0-200%）
+- 构建时非破坏性应用缩放（NDMF Pass 自动克隆 mesh + 缩放 delta）
+
+**架构**: Runtime IEditorOnly 组件 + NDMF Build Pass，完全非破坏性。
 
 ---
 
-## 2. UX 设计
-
-### 2.1 两视图架构
-
-| 视图 | 入口 | 功能 |
-|---|---|---|
-| **网格视图** | 默认 | 所有 MMD 形状的 100% 缩略图，按眼/嘴/眉分组显示。每个缩略图下方显示形状名、中文说明、当前缩放值 |
-| **详情视图** | 点击缩略图 | 选中形状的参考缩略图 + 缩放滑块 (0-200) + 预设按钮。Scene View 中实时 3D 预览 |
-
-### 2.2 用户流程
+## 2. 用户流程
 
 ```
-打开工具 → 拖入面部 SkinnedMeshRenderer → 点击「扫描 MMD 形状」
-  → 等待 ~3 秒（64 个形状的缩略图渲染，有进度条）
-  → 网格视图展示所有 MMD 形状
-
-浏览缩略图 → 发现某个形状效果不佳 → 点击缩略图
-  → 进入详情视图
-  → Scene View 实时显示该形状在当前缩放值下的 3D 效果
-  → 拖动滑块 (0-200) 或点击预设按钮 (60%/80%/120%/150%)
-  → Scene View 即时更新
-  → 可旋转/缩放/平移 Scene View 从任意角度检查
-
-点击「← 返回网格」或「上一个/下一个」→ 当前形状 Renderer 权重恢复为 0
-  → 返回网格，缩放值保留在滑块中（橙色高亮 = 已调节）
-
-重复调节其他形状
-
-点击「确认缩放值」→ 缩放因子记录到 appliedValue
-  → make-it-mmd 配置文本复制到剪贴板（格式: "まばたき → scale:0.80"）
-  → 弹出对话框显示完整输出
+1. Avatar 上 Add Component → MmdBlendShapeScaler
+2. Inspector 中点「Open MMD BlendShape Calibrator」
+3. 拖入 Face Renderer → 点击「Scan MMD Shapes」
+4. 网格视图浏览缩略图 → 点击进入详情
+5. 拖动滑块 (0-200) → Scene View 实时预览
+6. 调节到满意 → 关闭窗口（数据自动保存在组件上）
+7. Build & Upload → NDMF 自动克隆 mesh + 缩放 delta
 ```
-
-### 2.3 视觉反馈
-
-| 状态 | 视觉表现 |
-|---|---|
-| 未调节 (slider=100) | 白色文字，灰色背景 |
-| 已调节 (slider≠100) | 粗体名称，橙色数值，橙色微背景 |
-| 已确认 (applied=slider≠100) | 粗体名称，橙色数值（无"已改"标记） |
-
-### 2.4 操作按钮
-
-| 按钮 | 位置 | 功能 |
-|---|---|---|
-| 扫描 MMD 形状 | 顶部 | 读取网格，生成 64 个 100% 缩略图 |
-| 确认缩放值 | 网格底部 / 详情底部 | 记录当前 scale，输出 make-it-mmd 配置到剪贴板 |
-| 全部重置为 100% | 网格底部 | 所有 slider 恢复 100 |
-| 重新扫描 | 网格底部 | 重新生成缩略图（未确认的更改丢失） |
-| ← 返回网格 | 详情顶部 | 退出详情视图 |
-| ◀ 上一个 / 下一个 ▶ | 详情顶部 | 快速切换形状 |
-| 重置 100% | 详情 | 当前形状恢复 100 |
-| 60%/80%/120%/150% | 详情 | 快捷预设值 |
 
 ---
 
@@ -77,137 +39,75 @@
 ### 3.1 文件清单
 
 ```
-Assets/MMDBlendShapeChecker/Editor/
-├── MMDBlendShapeChecker.asmdef          # Assembly Definition (Editor only)
-├── MmdShapeDatabase.cs                  # 64 个标准 MMD 形状名 + 分类 + 中英文
-├── BlendShapeCalibrator.cs              # v4-v5 自动校准算法 (已退役，保留参考)
-├── BlendShapePreviewRenderer.cs         # 缩略图渲染引擎
-└── MMDBlendShapeCheckerWindow.cs        # 调节器 UI (EditorWindow)
+Runtime/
+  MmdBlendShapeScaler.asmdef       # 程序集定义 (Editor + Standalone)
+  MmdBlendShapeScaler.cs           # IEditorOnly 组件, 存 targetRenderer + scales
+
+Editor/
+  MmdBlendShapeScaler.Editor.asmdef # 程序集定义 (Editor only)
+  MmdBlendShapeScalerPlugin.cs      # NDMF Plugin 注册 (Transforming 阶段)
+  MmdBlendShapeScalePass.cs         # NDMF Pass: 流式读取 → 缩放 vertices → 回写
+  MmdBlendShapeScalerEditor.cs      # CustomEditor: Inspector 摘要 + 一键打开
+  MmdCalibratorWindow.cs            # EditorWindow: 网格视图 + 详情视图
+  MmdShapeDatabase.cs               # 64 个标准 MMD blendshape 名称数据库
+  BlendShapePreviewRenderer.cs      # AnimationMode + Camera 缩略图渲染
+  Vendor/                           # 差异高亮 (从 blendshape-viewer 适配)
+    MmdDiffCompute.cs               # GPU AABB 差异检测
+    MmdBlendShapeViewerGenerator.cs # 差异渲染引擎
+    MmdDiffViewer.shader            # 差异着色器
+    MmdDiffViewerRectOnly.shader    # 配合 compute shader 版
+    MmdDiffCompute.compute           # ComputeShader 源码
 ```
 
-### 3.2 类结构
+### 3.2 核心类设计
 
 ```
-MmdShapeDatabase (static)
-├── MmdShapeCategory (Flags enum: 眼部 | 嘴部 | 眉毛)
-├── MmdShapeInfo (日文名, 中文说明, 分类, 是否闭合类)
-├── 标准形状列表: List<MmdShapeInfo> (64)
-└── 名称到信息映射: Dictionary<string, MmdShapeInfo>
+MmdBlendShapeScaler (MonoBehaviour, IEditorOnly)
+├── targetRenderer: SkinnedMeshRenderer   ← 显式引用目标 mesh
+├── scales: Dictionary<string, float>     ← mmdName → scale (0.0-2.0)
+├── SetScale() / GetScale() / RemoveAll()
+└── ISerializationCallbackReceiver (过滤 scale=1.0)
 
-BlendShapePreviewRenderer (static)
-└── Render(SkinnedMeshRenderer, int blendshapeIndex, float weight, int size) → Texture2D
-    ├── 拷贝 Scene View 相机位姿 → 创建临时 Camera
-    ├── 创建 AnimationClip (blendShape.{name} = weight)
-    ├── AnimationMode.SampleAnimationClip → 临时激活
-    ├── Camera.Render → RenderTexture → ReadPixels → Texture2D
-    └── 清理临时对象
+MmdBlendShapeScalePass (NDMF Pass<>, Transforming 阶段)
+├── GetComponentsInChildren(true)   ← 多 scaler 支持
+├── Object.Instantiate(mesh)        ← 非破坏性克隆
+├── 流式处理: 读一帧 → scale vertices → 立即 AddFrame
+├── 只缩放 vertices (不缩放 normals/tangents)
+└── DestroyImmediate(scaler)        ← 组件自毁
 
-MMDBlendShapeCheckerWindow : EditorWindow
-├── ShapeEntry (内部类): name, description, category, meshIndex, sliderValue, appliedValue, thumbnail
-├── List<ShapeEntry> _entries
-├── ShapeEntry _selectedEntry (null = grid 模式, non-null = detail 模式)
-└── 核心方法:
-    ├── ScanAndGenerateThumbnails() — 扫描网格 + 生成 64 个缩略图
-    ├── DrawGridView() / DrawDetailView() — 两视图渲染
-    ├── SelectEntry() / DeselectCurrent() — 选中/取消
-    ├── PreviewOnMesh() — SetBlendShapeWeight(临时值)
-    ├── RestoreAllWeights() — 所有 MMD 形状恢复为 0
-    └── ApplyAllChanges() — 记录 scale + 输出剪贴板
+MmdCalibratorWindow (EditorWindow)
+├── 网格视图: 分类折叠 + 缩略图 + 橙色标记已调节
+├── 详情视图: 大缩略图 + 滑块 0-200 + 预设按钮 + Scene View 实时预览
+├── 生命周期: OnDisable/OnDestroy/PlayModeChanged/AssemblyReload 全部归零
+└── 自动确认模式: MouseUp 时一次性 Undo
 ```
 
-### 3.3 数据模型
+### 3.3 非破坏性保证
 
-```
-ShapeEntry
-├── name: string               # 日文名 (e.g. "まばたき")
-├── description: string        # 中文说明 (e.g. "眨眼/Blink")
-├── category: MmdShapeCategory # 眼部 | 嘴部 | 眉毛
-├── meshIndex: int             # 在 sharedMesh.blendShapeCount 中的索引
-├── sliderValue: float         # 当前滑块值 (0-200), 默认 100
-├── appliedValue: float        # 上次确认的值, 默认 100
-├── thumbnail: Texture2D       # 100% 缩略图
-├── isModified: bool           # sliderValue ≠ appliedValue (未确认的更改)
-└── isDirty: bool              # sliderValue ≠ 100 (有调节)
-```
+| 保证项 | 实现 |
+|--------|------|
+| 原始 mesh 不修改 | `Object.Instantiate(originalMesh)` |
+| 配置持久化 | Unity 序列化到 prefab |
+| 构建时清理 | Pass 执行后 `DestroyImmediate(scaler)` |
+| 组件不进包 | `IEditorOnly` — VRChat SDK 构建时剥离 |
+| 撤销支持 | `Undo.RegisterCompleteObjectUndo` |
+| 预览残留零容忍 | 6 种生命周期事件全部归零 |
 
-### 3.4 渲染管线
+### 3.4 从 make-it-mmd 学到的技术
 
-```
-BlendShapePreviewRenderer.Render(renderer, index, weight=100, size=100)
-│
-├─ 1. 读取 SceneView.lastActiveSceneView.camera
-│     └─ 拷贝: position, rotation, FOV, orthographic, clip planes
-│
-├─ 2. 创建临时 Camera (HideFlags.HideAndDontSave)
-│     └─ GameObject("__MMD_BS_Preview_Cam__")
-│
-├─ 3. 创建 AnimationClip (HideFlags.HideAndDontSave)
-│     └─ EditorCurveBinding: type=SkinnedMeshRenderer, property="blendShape.{name}"
-│     └─ AnimationCurve.Constant(0, 1/60f, weight)
-│
-├─ 4. AnimationMode 临时采样
-│     ├─ StartAnimationMode()
-│     ├─ SampleAnimationClip(gameObject, clip, 1/60f)
-│     └─ (此时 renderer 临时处于目标权重)
-│
-├─ 5. 渲染到纹理
-│     ├─ RenderTexture.GetTemporary(size, size, 24)
-│     ├─ camera.targetTexture = rt
-│     ├─ camera.Render()
-│     ├─ new Texture2D(size, size, RGB24)
-│     ├─ ReadPixels(rt) + Apply()
-│     └─ RenderTexture.ReleaseTemporary(rt)
-│
-├─ 6. 清理
-│     ├─ AnimationMode.StopAnimationMode()
-│     ├─ DestroyImmediate(clip)
-│     └─ DestroyImmediate(camGo)
-│
-└─ 返回 Texture2D (调用者负责 DestroyImmediate)
-```
-
-### 3.5 Scene View 实时预览
-
-```
-详情视图中:
-  slider 变化 → PreviewOnMesh(entry)
-    → _faceRenderer.SetBlendShapeWeight(entry.meshIndex, entry.sliderValue)
-    → SceneView.RepaintAll()
-
-选中切换 / 返回网格 / 关闭窗口:
-  → _faceRenderer.SetBlendShapeWeight(entry.meshIndex, 0f)
-  → Renderer 恢复到 Avatar 默认状态
-
-关键不变式:
-  "Renderer 上 MMD 形状的权重永远为 0（除非正在预览）"
-```
-
-### 3.6 非破坏性保证
-
-| 操作 | 是否修改 Renderer | 是否修改 Mesh 资产 |
-|---|---|---|
-| 预览 (slider 拖动) | 是 (临时, 立即恢复) | 否 |
-| 确认缩放值 (Apply) | 否 | 否 |
-| 全部重置 | 否 | 否 |
-| 关闭窗口 | 恢复所有 MMD → 0 | 否 |
+| 技术 | 来源 | 本工具采用 |
+|------|------|-----------|
+| IEditorOnly 标记组件 | make-it-mmd | ✓ |
+| NDMF Pass 模式 | make-it-mmd | ✓ |
+| Object.Instantiate 克隆 | make-it-mmd | ✓ |
+| 缩略图预览 | blendshape-viewer (Haï) | ✓ |
+| 差异高亮 DiffCompute | blendshape-viewer | ✓ |
+| 流式 delta 缩放 | BlendShapeMappingsPass | ✓ (改进: 只缩 vertices) |
 
 ---
 
-## 4. 当前局限
+## 4. 依赖
 
-1. **缩略图依赖 Scene View**: 如果 Scene View 未打开或没有活跃相机，`BlendShapePreviewRenderer.Render` 返回 null，网格不显示缩略图
-2. **缩略图是静态快照**: 以 100% 渲染，不随滑块变化。详情视图中的大缩略图也是 100% 参考，实时预览依赖 Scene View
-3. **无 Scene View 自动对焦**: 预览时不自动调整 Scene View 相机角度去框住面部区域
-4. **输出仅支持 make-it-mmd 格式**: 剪贴板输出的文本格式硬编码为 `{name} → scale:{value:F2}`
-5. **缩放因子与 Renderer 权重解耦**: 工具的 scale 值不会应用到 Renderer。用户需要在 make-it-mmd 中手动配置这些 scale 值
-6. **无配置持久化**: 关闭窗口后 scale 数据丢失。重新扫描会重置所有 slider 为 100
-
----
-
-## 5. 依赖
-
-- Unity Editor API (`UnityEditor`)
-- `AnimationMode` — 临时 BlendShape 采样
-- `SceneView.lastActiveSceneView` — 相机参数来源
-- 无第三方依赖
-- 无 Runtime 代码（Editor-only, asmdef: Editor platform）
+- Unity 2022.3+
+- nadena.dev.ndmf >= 1.7.4
+- com.vrchat.avatars >= 3.7.0 (VRC.SDKBase + VRCSDK3)

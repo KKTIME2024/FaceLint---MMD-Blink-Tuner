@@ -1,7 +1,7 @@
 # MMD BlendShape 缩放调节器 — 重构方案 v2
 
 **日期**: 2026-05-18  
-**状态**: 已根据用户反馈修正  
+**状态**: ✅ 已实现 — 见 `Runtime/` 和 `Editor/` 目录  
 **参考**: make-it-mmd 非破坏性架构 (`E:\21_CodeRepos\make-it-mmd`)
 
 ---

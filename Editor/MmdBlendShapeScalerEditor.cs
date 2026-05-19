@@ -11,7 +11,13 @@ namespace MmdBlendShapeScaler
             var scaler = (MmdBlendShapeScaler)target;
 
             // ── Renderer reference ──
-            EditorGUILayout.ObjectField("Target Renderer", scaler.targetRenderer, typeof(SkinnedMeshRenderer), true);
+            var newRenderer = (SkinnedMeshRenderer)EditorGUILayout.ObjectField("Target Renderer", scaler.targetRenderer, typeof(SkinnedMeshRenderer), true);
+            if (newRenderer != scaler.targetRenderer)
+            {
+                Undo.RecordObject(scaler, "Set Target Renderer");
+                scaler.targetRenderer = newRenderer;
+                EditorUtility.SetDirty(scaler);
+            }
 
             // ── Summary ──
             EditorGUILayout.Space(4);

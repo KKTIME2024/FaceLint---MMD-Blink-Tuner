@@ -108,10 +108,16 @@ namespace MmdBlendShapeScaler
             _faceRenderer = (SkinnedMeshRenderer)EditorGUILayout.ObjectField(
                 "Face Renderer", _faceRenderer, typeof(SkinnedMeshRenderer), true);
             
-            // Track the scaler component on selection change
+            // Track the scaler component and sync targetRenderer on selection change
             if (prevRenderer != _faceRenderer && _faceRenderer != null)
             {
                 _scaler = _faceRenderer.GetComponentInParent<MmdBlendShapeScaler>();
+                if (_scaler != null && _scaler.targetRenderer != _faceRenderer)
+                {
+                    Undo.RecordObject(_scaler, "Set Target Renderer");
+                    _scaler.targetRenderer = _faceRenderer;
+                    EditorUtility.SetDirty(_scaler);
+                }
             }
 
             EditorGUI.BeginDisabledGroup(_faceRenderer == null);

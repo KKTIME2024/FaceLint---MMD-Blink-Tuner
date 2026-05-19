@@ -103,7 +103,11 @@ namespace MmdBlendShapeScaler
 
             // ── 其他 ──
             new MmdShapeInfo("涙", "流泪", MmdShapeCategory.未知),
-            new MmdShapeInfo("しいたけ", "香菇", MmdShapeCategory.未知)
+            new MmdShapeInfo("しいたけ", "香菇", MmdShapeCategory.未知),
+
+            // ── Avatar 原生形状 (MMD 世界无直接驱动，但与 MMD 形状叠加) ──
+            new MmdShapeInfo("vrc.blink (3.0)", "眨眼3.0/Native Blink", MmdShapeCategory.眼部),
+            new MmdShapeInfo("vrc.blink(3.0)", "眨眼3.0/Native Blink", MmdShapeCategory.眼部)
         };
 
         public static readonly HashSet<string> 标准名称集合 = new HashSet<string>();
