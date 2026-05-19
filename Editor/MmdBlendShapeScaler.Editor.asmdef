@@ -1,0 +1,18 @@
+{
+    "name": "MmdBlendShapeScaler.Editor",
+    "rootNamespace": "MmdBlendShapeScaler",
+    "references": [
+        "MmdBlendShapeScaler.Runtime",
+        "nadena.dev.ndmf",
+        "com.vrchat.avatars"
+    ],
+    "includePlatforms": ["Editor"],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
