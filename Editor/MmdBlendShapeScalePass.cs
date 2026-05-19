@@ -7,16 +7,30 @@ namespace MmdBlendShapeScaler
     {
         public override string DisplayName => "Scale MMD BlendShapes";
 
+        static MmdBlendShapeScalePass()
+        {
+            Debug.Log("[MmdScaler] Pass static constructor called.");
+        }
+
         protected override void Execute(BuildContext context)
         {
-            // Multi-scaler: iterate ALL scalers on the avatar
             var scalers = context.AvatarRootObject
                 .GetComponentsInChildren<MmdBlendShapeScaler>(includeInactive: true);
 
+            Debug.Log($"[MmdScaler] Execute started. Found {scalers.Length} scaler(s) on avatar.");
+
             foreach (var scaler in scalers)
             {
-                if (scaler == null || scaler.Count == 0) continue;
-                if (!scaler.IsValid) continue;
+                if (scaler == null || scaler.Count == 0)
+                {
+                    Debug.Log($"[MmdScaler] Skipping scaler: {(scaler == null ? "null" : $"Count=0")}");
+                    continue;
+                }
+                if (!scaler.IsValid)
+                {
+                    Debug.Log($"[MmdScaler] Skipping scaler: invalid (targetRenderer or mesh null)");
+                    continue;
+                }
 
                 var renderer = scaler.targetRenderer;
                 var originalMesh = renderer.sharedMesh;
@@ -76,8 +90,11 @@ namespace MmdBlendShapeScaler
 
                 // Step 3: Assign clone and destroy component
                 renderer.sharedMesh = meshCopy;
+                Debug.Log($"[MmdScaler] Processed {blendShapeCount} blendshapes for '{renderer.name}'. Scaled: {scaler.Count}.");
                 Object.DestroyImmediate(scaler);
             }
+
+            Debug.Log("[MmdScaler] Execute finished.");
         }
     }
 }

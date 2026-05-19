@@ -1,3 +1,150 @@
+# MmdBlendShapeScaler — 开发日志
+
+## v7.1 — 构建不生效：3 个隐藏 Bug 排查与修复 (2026-05-19)
+
+**状态**: ✅ 已修复并实测通过
+
+### 背景
+
+v7 架构完成后，Editor 中 Calibrator 窗口正常工作，Scene View 预览正常，
+但 **Build & Upload 后 blendshape 缩放完全没生效**。排查发现 3 个隐藏 bug，
+形成连锁故障——前两个 bug 掩盖了第三个。
+
+### Bug #1：MmdBlendShapeScalerPlugin.cs 文件损坏
+
+**现象**：文件底部（第 39 行 namespace 闭合后）有重复的孤儿代码——
+`Configure()` 方法和 `MmdScalerDiagnostics` 类被复制粘贴到了 namespace 之外。
+`Configure()` 不在任何 class 体内，这是 C# 编译错误。
+
+**影响**：Editor 程序集编译失败 → NDMF Plugin 无法注册 → 构建时 pass 永不执行。
+
+**修复**：删除孤儿代码，保留一份干净的 `Plugin<T>` 子类。
+
+### Bug #2：缺少 [assembly: ExportsPlugin] 属性
+
+**现象**：修好 Bug #1 后，Unity Console 中仍然没有任何 `[MmdScaler]` 日志。
+对比 make-it-mmd 源码（`E:\21_CodeRepos\make-it-mmd`）后发现，make-it-mmd 有
+`Editor/AssemblyInfo.cs` 文件，内含：
+
+```csharp
+[assembly: ExportsPlugin(typeof(NonDestructiveMmdPlugin))]
+```
+
+这是 NDMF 发现插件的**标准入口**。之前的代码试图用 `InitializeOnLoadMethod` +
+`RuntimeHelpers.RunClassConstructor` 暴力触发静态构造函数来注册，这个 hack 不可靠。
+
+**修复**：
+- 新建 `Editor/AssemblyInfo.cs`，添加 `[assembly: ExportsPlugin(typeof(MmdBlendShapeScalerPlugin))]`
+- `Editor/MmdBlendShapeScaler.Editor.asmdef` 设置 `"autoReferenced": false`（与 make-it-mmd 一致）
+- 删除 `MmdScalerDiagnostics` 的 `InitializeOnLoadMethod` hack
+
+### Bug #3：Pass 静态构造函数访问 Instance 导致递归崩溃
+
+**现象**：修好 Bug #2 后，NDMF 成功发现了 Plugin，`Configure()` 被调用，
+但构建立即崩溃：
+
+```
+InvalidOperationException: ValueFactory attempted to access the Value property...
+MmdBlendShapeScalePass..cctor () (at MmdBlendShapeScalePass.cs:12)
+```
+
+**根因**：`MmdBlendShapeScalePass` 的静态构造函数里写了：
+```csharp
+Debug.Log("Instance is: " + (Instance != null ? "valid" : "null"));
+```
+
+`Instance` 是 `Pass<T>` 基类的属性，内部用 `Lazy<T>` + `Activator.CreateInstance<T>()`
+来创建实例。但在静态构造函数**内部**访问 `Instance` 会再次触发 `Activator.CreateInstance<T>()`，
+导致递归调用。`Lazy<T>` 检测到 `ValueFactory` 里又访问 `Value`，直接抛异常。
+
+**为什么之前不暴露**：Bug #1 和 #2 导致 `Configure()` 从未被调用，
+`MmdBlendShapeScalePass.Instance` 从未被访问，静态构造函数从未执行。
+这是一个经典的"被上游 bug 掩盖的 bug"。
+
+**修复**：静态构造函数中不访问 `Instance`，改为无参 Debug.Log。
+
+### 最终验证日志
+
+```
+[MmdScaler] Configure called — registering pass
+[MmdScaler] Execute started. Found 1 scaler(s) on avatar.
+[MmdScaler] Processed 334 blendshapes for 'Body'. Scaled: 12.
+[MmdScaler] Execute finished.
+```
+
+334 个 blendshape 中 12 个被按配置缩放，构建成功，上传后效果生效。
+
+### 教训
+
+1. **总是用 `[assembly: ExportsPlugin]` 注册 NDMF 插件**——这是 NDMF 的标准发现机制，
+   不要依赖 `InitializeOnLoadMethod` hack。
+2. **不要在 `Pass<T>` 的静态构造函数中访问 `Instance`**——`Lazy<T>` 不允许递归访问。
+3. **对比参考实现**——make-it-mmd 的 `AssemblyInfo.cs` + `autoReferenced: false` 模式
+   是 NDMF 插件的最佳实践。
+
+---
+
+## v7 — NDMF 非破坏性架构 (2026-05-19)
+
+**状态**: ✅ 完成
+**分支**: v7-ndmf-rewrite
+
+### 背景
+
+v1-v6 的 `MMDBlendShapeChecker` 是一个纯预览工具：扫描 → 调节滑块 → 复制剪贴板 → 手动到 make-it-mmd 配置。工作流断裂，不是"一步到位"。
+
+v7 采用 make-it-mmd 的非破坏性 NDMF 架构，将工具从"纯预览"升级为"预览 + 构建时自动应用"。
+
+### 架构变更
+
+| | v1-v6 (MMDBlendShapeChecker) | v7 (MmdBlendShapeScaler) |
+|---|---|---|
+| 配置存储 | EditorWindow 内部状态 | IEditorOnly Runtime 组件 |
+| 持久化 | 无（关窗丢失） | Unity 序列化 |
+| Mesh 修改 | 不修改（= 无产出） | NDMF Pass 自动克隆 + 缩放 |
+| 预览 | SetBlendShapeWeight 临时 | 保留 + 差异高亮 |
+| 工作流 | 4 步（扫描→调节→复制→粘贴） | 2 步（调节→Build） |
+
+### 新增文件
+
+- `Runtime/MmdBlendShapeScaler.cs` — public targetRenderer + scales 字典
+- `Editor/MmdBlendShapeScalerPlugin.cs` — NDMF Transforming 阶段注册
+- `Editor/MmdBlendShapeScalePass.cs` — 流式 delta 缩放 (仅 vertices)
+- `Editor/MmdBlendShapeScalerEditor.cs` — Inspector 摘要 + 一键打开
+- `Editor/MmdCalibratorWindow.cs` — 网格 + 详情两视图 (607 行)
+- `Editor/Vendor/` — 差异高亮 shader + compute (从 blendshape-viewer 适配)
+
+### 删除文件
+
+- `Editor/MMDBlendShapeChecker.asmdef`
+- `Editor/MMDBlendShapeCheckerWindow.cs`
+- `Editor/BlendShapeCalibrator.cs`
+- `Editor/MmdShapeDatabase.cs` (旧命名空间版)
+- `Editor/BlendShapePreviewRenderer.cs` (旧命名空间版)
+
+### 关键技术决策
+
+| 决策 | 理由 |
+|------|------|
+| targetRenderer 存组件上 | 不依赖 VisemeSkinnedMesh — MMD blendshape 可能在任意 mesh |
+| 只缩放 vertices | normals/tangents 不是 position delta，缩放导致 shading artifact |
+| 流式处理 | 不缓存全部 FrameData，内存从数百 MB 降到 ~3 个数组 |
+| 多 scaler 支持 | GetComponentsInChildren(true) 支持多 face mesh avatar |
+| #if 守卫全部移除 | versionDefines 导致 NullReferenceException，Editor 代码无条件编译 |
+| includePlatforms 从 Editor 改为空 | IEditorOnly 组件必须编译到 Standalone 才能在场景中存在 |
+| internal → public | 跨 asmdef 引用需要 public |
+
+### 已知局限
+
+1. 差异高亮 toggle 已 stub，待接入 MmdBlendShapeViewerGenerator
+2. 无单元测试
+3. 滑块 MouseUp 检测在 IMGUI 中不完全精确（不影响功能）
+4. 多帧 blendshape 假定使用标准权重 100 格式
+
+---
+
+## v1-v6 — 旧架构 (保留参考)
+
 # MMD BlendShape 过闭合检测器 — 开发思路演变
 
 ## 背景

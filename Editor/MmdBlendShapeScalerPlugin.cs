@@ -1,4 +1,5 @@
 using nadena.dev.ndmf;
+using UnityEngine;
 
 namespace MmdBlendShapeScaler
 {
@@ -9,6 +10,7 @@ namespace MmdBlendShapeScaler
 
         protected override void Configure()
         {
+            Debug.Log("[MmdScaler] Configure called — registering pass");
             var seq = InPhase(BuildPhase.Transforming);
             seq.AfterPlugin("nadena.dev.modular-avatar");
             seq.Run(MmdBlendShapeScalePass.Instance);
