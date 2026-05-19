@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 
-namespace MMDBlendShapeChecker
+namespace MmdBlendShapeScaler
 {
     [Flags]
     public enum MmdShapeCategory
