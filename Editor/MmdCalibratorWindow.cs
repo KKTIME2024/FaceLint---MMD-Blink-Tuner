@@ -100,7 +100,7 @@ namespace MmdBlendShapeScaler
         {
             // ── Header ──
             EditorGUILayout.Space(4);
-            EditorGUILayout.LabelField("MMD BlendShape Calibrator", EditorStyles.boldLabel);
+            EditorGUILayout.LabelField("VRC Avatar MMD & Blink Fixer", EditorStyles.boldLabel);
             
             // ── Renderer selection ──
             EditorGUILayout.BeginHorizontal();
@@ -572,7 +572,7 @@ namespace MmdBlendShapeScaler
                 {
                     var entry = _entries[i];
                     EditorUtility.DisplayProgressBar(
-                        "MMD Calibrator",
+                        "VRC Avatar MMD & Blink Fixer",
                         $"Rendering {entry.name} ({i + 1}/{_entries.Count})",
                         (float)i / _entries.Count);
 

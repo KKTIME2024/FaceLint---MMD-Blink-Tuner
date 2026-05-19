@@ -36,7 +36,7 @@ namespace MmdBlendShapeScaler
 
             // ── Buttons ──
             EditorGUILayout.Space(8);
-            if (GUILayout.Button("Open MMD BlendShape Calibrator", GUILayout.Height(30)))
+            if (GUILayout.Button("Open Calibrator", GUILayout.Height(30)))
             {
                 MmdCalibratorWindow.ShowWindow(scaler);
             }
