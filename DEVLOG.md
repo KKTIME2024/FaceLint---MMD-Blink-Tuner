@@ -1,5 +1,43 @@
 # MmdBlendShapeScaler — 开发日志
 
+## v0.2.0 — 三语 UI 支持 (计划中)
+
+**状态**: 🔜 待 v0.1.0 内测反馈后启动
+
+### 方案
+
+参考 BlendShapeCapper (LGC) 的字典式三语方案，不引入 i18n 框架：
+
+```
+enum UILang { ZhCN, En, Ja }
+
+class Strings {
+    // 所有 UI 标签字段
+    static Strings For(UILang lang) { switch ... }
+}
+```
+
+顶部 `EnumPopup` 切换语言，所有 UI 用 `strings.XXX` 引用。
+
+### 需翻译的字符串 (~30 个)
+
+| 区域 | 字段 |
+|---|---|
+| 窗口 & 菜单 | ToolTitle, MenuItem |
+| 网格视图 | ScanBtn, ThumbnailSize, Eyes/Mouth/Eyebrows/Other, ResetAll, ReScan |
+| 详情视图 | ScaleFactor, QuickLabel, SceneViewHint, Back/Prev/Next, Confirm/Cancel |
+| Inspector | TargetRenderer, OpenCalibrator, ClearAll, NoScaleHint, ConfiguredFmt |
+| 状态 | StatusReady, StatusNoSMR, StatusNoMMD, ProgressFmt |
+| Shape 描述 | 已有双语（`中文说明` 字段），不用动 |
+
+### 其他 v0.2 候选
+
+- Prev/Next 导航时保持在详情视图（不跳回网格）
+- 差异高亮（接入 Vendor/ 里已有的 DiffCompute）
+- 单元测试
+
+---
+
 ## v7.1 — 构建不生效：3 个隐藏 Bug 排查与修复 (2026-05-19)
 
 **状态**: ✅ 已修复并实测通过
