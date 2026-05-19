@@ -31,9 +31,9 @@ namespace MmdBlendShapeScaler
         
         // ── View options ──
         private int _thumbnailSize = 150;
-        private bool _showDifferences = false; // diff highlighting (P2 feature, stub for now)
-        private bool _autoConfirm = false;
-        
+        private static List<float> _recentValues = new List<float>();  // sorted ascending, deduped
+        private const int MaxRecentValues = 8;
+
         // ── Foldouts ──
         private bool _foldoutEye = true;
         private bool _foldoutMouth = true;
@@ -43,17 +43,17 @@ namespace MmdBlendShapeScaler
         // ── Window ──
         public static void ShowWindow(MmdBlendShapeScaler scaler)
         {
-            var window = GetWindow<MmdCalibratorWindow>("MMD Calibrator");
+            var window = GetWindow<MmdCalibratorWindow>("VRC Avatar MMD & Blink Fixer");
             window.minSize = new Vector2(520, 400);
             window._scaler = scaler;
             window._faceRenderer = scaler.targetRenderer;
             window.Show();
         }
 
-        [MenuItem("Tools/MMD BlendShape Calibrator")]
+        [MenuItem("Tools/VRC Avatar MMD & Blink Fixer")]
         public static void OpenStandalone()
         {
-            var window = GetWindow<MmdCalibratorWindow>("MMD Calibrator");
+            var window = GetWindow<MmdCalibratorWindow>("VRC Avatar MMD & Blink Fixer");
             window.minSize = new Vector2(520, 400);
             window.Show();
         }
@@ -174,7 +174,7 @@ namespace MmdBlendShapeScaler
                 var c = GUI.color;
                 GUI.color = new Color(1f, 0.65f, 0.2f);
                 EditorGUILayout.LabelField($"{summary} | Modified: {modifiedCount}" +
-                    (dirtyCount > 0 && !_autoConfirm ? $" | Unconfirmed: {dirtyCount}" : ""),
+                    (dirtyCount > 0 ? $" | Unconfirmed: {dirtyCount}" : ""),
                     EditorStyles.miniLabel);
                 GUI.color = c;
             }
@@ -185,10 +185,7 @@ namespace MmdBlendShapeScaler
 
             // ── View options ──
             EditorGUILayout.BeginHorizontal();
-            _thumbnailSize = EditorGUILayout.IntSlider("Thumbnail Size", _thumbnailSize, 100, 300);
-            // ★ Diff toggle (stub for P2, currently does nothing)
-            // _showDifferences = EditorGUILayout.ToggleLeft("Show Diff", _showDifferences);
-            _autoConfirm = EditorGUILayout.ToggleLeft("Auto-Confirm", _autoConfirm);
+            _thumbnailSize = EditorGUILayout.IntSlider("Thumbnail Size", _thumbnailSize, 100, 150);
             EditorGUILayout.EndHorizontal();
 
             EditorGUILayout.Space(4);
@@ -302,10 +299,11 @@ namespace MmdBlendShapeScaler
             EditorGUILayout.BeginHorizontal();
             if (GUILayout.Button("\u2190 Back to Grid", GUILayout.Width(100)))
             {
+                ConfirmCurrent();
                 DeselectCurrent();
                 exitDetail = true;
             }
-            
+
             EditorGUILayout.LabelField($"{entry.name}", EditorStyles.boldLabel, GUILayout.Width(100));
             EditorGUILayout.LabelField(entry.description, GUILayout.Width(100));
             GUILayout.FlexibleSpace();
@@ -314,6 +312,7 @@ namespace MmdBlendShapeScaler
             EditorGUI.BeginDisabledGroup(curIdx <= 0);
             if (GUILayout.Button("\u25C0 Prev", GUILayout.Width(60)))
             {
+                ConfirmCurrent();
                 DeselectCurrent();
                 SelectEntry(_entries[curIdx - 1]);
                 exitDetail = true;
@@ -322,6 +321,7 @@ namespace MmdBlendShapeScaler
             EditorGUI.BeginDisabledGroup(curIdx >= _entries.Count - 1);
             if (GUILayout.Button("Next \u25B6", GUILayout.Width(60)))
             {
+                ConfirmCurrent();
                 DeselectCurrent();
                 SelectEntry(_entries[curIdx + 1]);
                 exitDetail = true;
@@ -348,51 +348,36 @@ namespace MmdBlendShapeScaler
             
             EditorGUILayout.LabelField("Scale Factor", EditorStyles.boldLabel);
             
-            // Slider
+            // Slider — preview only, save on navigation / confirm
             float newVal = EditorGUILayout.Slider(entry.sliderValue, 0f, 200f);
             if (Mathf.Abs(newVal - entry.sliderValue) > 0.1f)
             {
-                // ★ Only write on mouse up, not every frame
-                if (Event.current.type == EventType.MouseUp || Event.current.type == EventType.Used)
-                {
-                    entry.sliderValue = Mathf.RoundToInt(newVal);
-                    PreviewOnMesh(entry);
-                    if (_autoConfirm) ConfirmCurrent();
-                }
-                else
-                {
-                    entry.sliderValue = Mathf.RoundToInt(newVal);
-                    PreviewOnMesh(entry);
-                }
+                entry.sliderValue = Mathf.RoundToInt(newVal);
+                PreviewOnMesh(entry);
                 Repaint();
             }
 
-            // Numeric input
-            EditorGUILayout.BeginHorizontal();
-            var valStr = EditorGUILayout.TextField(entry.sliderValue.ToString(), GUILayout.Width(40));
-            if (float.TryParse(valStr, out float parsed) && Mathf.Abs(parsed - entry.sliderValue) > 0.1f)
-            {
-                entry.sliderValue = Mathf.Clamp((int)parsed, 0, 200);
-                PreviewOnMesh(entry);
-                if (_autoConfirm) ConfirmCurrent();
-            }
-            EditorGUILayout.LabelField("%", GUILayout.Width(15));
-            EditorGUILayout.EndHorizontal();
-
             EditorGUILayout.Space(8);
 
-            // Preset buttons
+            // Quick-apply: up to 5 recent values (including 100%)
             EditorGUILayout.BeginHorizontal();
-            if (GUILayout.Button("Reset 100%", GUILayout.Width(80)))
-                SetSliderValue(entry, 100);
-            if (GUILayout.Button("80%", GUILayout.Width(50)))
-                SetSliderValue(entry, 80);
-            if (GUILayout.Button("60%", GUILayout.Width(50)))
-                SetSliderValue(entry, 60);
-            if (GUILayout.Button("120%", GUILayout.Width(50)))
-                SetSliderValue(entry, 120);
-            if (GUILayout.Button("150%", GUILayout.Width(50)))
-                SetSliderValue(entry, 150);
+            EditorGUILayout.LabelField("Quick:", EditorStyles.miniLabel, GUILayout.Width(36));
+            int shown = 0;
+            int maxShow = 5;
+            if (GUILayout.Button("100%", GUILayout.Width(45))) { entry.sliderValue = 100; PreviewOnMesh(entry); ConfirmCurrent(); }
+            shown++;
+            foreach (float val in _recentValues)
+            {
+                if (shown >= maxShow) break;
+                int pct = Mathf.RoundToInt(val);
+                if (pct != entry.sliderValue && pct != 100)
+                {
+                    if (GUILayout.Button($"{pct}%", GUILayout.Width(45)))
+                        { entry.sliderValue = pct; PreviewOnMesh(entry); ConfirmCurrent(); }
+                    shown++;
+                }
+            }
+            GUILayout.FlexibleSpace();
             EditorGUILayout.EndHorizontal();
 
             // Status
@@ -425,13 +410,6 @@ namespace MmdBlendShapeScaler
                 DeselectCurrent();
             }
             EditorGUILayout.EndHorizontal();
-        }
-
-        private void SetSliderValue(ShapeEntry entry, int value)
-        {
-            entry.sliderValue = value;
-            PreviewOnMesh(entry);
-            if (_autoConfirm) ConfirmCurrent();
         }
 
         // ══════════════════════════════════════════════
@@ -470,8 +448,23 @@ namespace MmdBlendShapeScaler
         private void ConfirmCurrent()
         {
             if (_selectedEntry == null || _scaler == null) return;
-            
+
             var entry = _selectedEntry;
+            float pct = entry.sliderValue;
+
+            if (_recentValues == null)
+                _recentValues = new List<float>();
+
+            // Insert into sorted history (deduped, skip 100)
+            if (Mathf.Abs(pct - 100f) > 0.5f && !_recentValues.Contains(pct))
+            {
+                _recentValues.Add(pct);
+                _recentValues.Sort();
+                if (_recentValues.Count > MaxRecentValues)
+                    _recentValues.RemoveAt(_recentValues.Count - 1); // drop largest
+                Debug.Log($"[MMDBlinkFixer] Recent values: [{string.Join(", ", _recentValues)}]");
+            }
+
             Undo.RegisterCompleteObjectUndo(_scaler, $"Set MMD Scale {entry.name}={entry.sliderValue}%");
             _scaler.SetScale(entry.name, entry.Scale);
             EditorUtility.SetDirty(_scaler);
@@ -528,7 +521,7 @@ namespace MmdBlendShapeScaler
             int unsaved = _entries.Count(e => 
                 Mathf.Abs(e.sliderValue - GetSavedScale(e.name) * 100f) > 0.5f);
             
-            if (unsaved > 0 && !_autoConfirm)
+            if (unsaved > 0)
             {
                 if (!EditorUtility.DisplayDialog("Re-scan",
                     $"{unsaved} shapes have unconfirmed changes. Re-scanning will lose them.\n\n" +

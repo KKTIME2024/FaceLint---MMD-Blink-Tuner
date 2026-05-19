@@ -1,8 +1,8 @@
 {
-    "name": "mmd-blendshape-scaler",
-    "displayName": "MMD BlendShape Scaler",
-    "version": "1.0.0",
-    "description": "Non-destructive MMD blendshape delta scaling tool for VRChat avatars. Preview and adjust MMD morph scales with live Scene View feedback, auto-applied at build time via NDMF.",
+    "name": "vrc-avatar-mmd-blink-fixer",
+    "displayName": "VRC Avatar MMD & Blink Fixer",
+    "version": "0.1.0",
+    "description": "Fix over-closed eyes and exaggerated mouth on VRChat MMD avatars. Scale MMD blend shape deltas non-destructively at build time via NDMF.",
     "unity": "2022.3",
     "author": {
         "name": "MMD BlendShape Scaler"

@@ -5,30 +5,25 @@ namespace MmdBlendShapeScaler
 {
     public class MmdBlendShapeScalePass : Pass<MmdBlendShapeScalePass>
     {
-        public override string DisplayName => "Scale MMD BlendShapes";
-
-        static MmdBlendShapeScalePass()
-        {
-            Debug.Log("[MmdScaler] Pass static constructor called.");
-        }
+        public override string DisplayName => "VRC Avatar MMD & Blink Fixer";
 
         protected override void Execute(BuildContext context)
         {
             var scalers = context.AvatarRootObject
                 .GetComponentsInChildren<MmdBlendShapeScaler>(includeInactive: true);
 
-            Debug.Log($"[MmdScaler] Execute started. Found {scalers.Length} scaler(s) on avatar.");
+            Debug.Log($"[MMDBlinkFixer] Execute started. Found {scalers.Length} scaler(s) on avatar.");
 
             foreach (var scaler in scalers)
             {
                 if (scaler == null || scaler.Count == 0)
                 {
-                    Debug.Log($"[MmdScaler] Skipping scaler: {(scaler == null ? "null" : $"Count=0")}");
+                    Debug.Log($"[MMDBlinkFixer] Skipping scaler: {(scaler == null ? "null" : $"Count=0")}");
                     continue;
                 }
                 if (!scaler.IsValid)
                 {
-                    Debug.Log($"[MmdScaler] Skipping scaler: invalid (targetRenderer or mesh null)");
+                    Debug.Log($"[MMDBlinkFixer] Skipping scaler: invalid (targetRenderer or mesh null)");
                     continue;
                 }
 
@@ -90,11 +85,11 @@ namespace MmdBlendShapeScaler
 
                 // Step 3: Assign clone and destroy component
                 renderer.sharedMesh = meshCopy;
-                Debug.Log($"[MmdScaler] Processed {blendShapeCount} blendshapes for '{renderer.name}'. Scaled: {scaler.Count}.");
+                Debug.Log($"[MMDBlinkFixer] Processed {blendShapeCount} blendshapes for '{renderer.name}'. Scaled: {scaler.Count}.");
                 Object.DestroyImmediate(scaler);
             }
 
-            Debug.Log("[MmdScaler] Execute finished.");
+            Debug.Log("[MMDBlinkFixer] Execute finished.");
         }
     }
 }

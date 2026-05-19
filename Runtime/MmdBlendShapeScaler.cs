@@ -14,7 +14,7 @@ namespace MmdBlendShapeScaler
     /// because MMD blendshapes may live on Body/Face/Head/any mesh.
     /// Editor Window and Build Pass use this same reference for data consistency.
     /// </summary>
-    [AddComponentMenu("MMD/MmdBlendShapeScaler")]
+    [AddComponentMenu("VRC Avatar MMD & Blink Fixer/MMD & Blink Fixer")]
     [DisallowMultipleComponent]
     public class MmdBlendShapeScaler : MonoBehaviour, VRC.SDKBase.IEditorOnly, ISerializationCallbackReceiver
     {

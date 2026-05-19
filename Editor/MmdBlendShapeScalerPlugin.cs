@@ -1,16 +1,16 @@
 using nadena.dev.ndmf;
-using UnityEngine;
+
+[assembly: ExportsPlugin(typeof(MmdBlendShapeScaler.MmdBlendShapeScalerPlugin))]
 
 namespace MmdBlendShapeScaler
 {
     public class MmdBlendShapeScalerPlugin : Plugin<MmdBlendShapeScalerPlugin>
     {
-        public override string QualifiedName => "mmd-blendshape-scaler";
-        public override string DisplayName => "MMD BlendShape Scaler";
+        public override string QualifiedName => "vrc-avatar-mmd-blink-fixer";
+        public override string DisplayName => "VRC Avatar MMD & Blink Fixer";
 
         protected override void Configure()
         {
-            Debug.Log("[MmdScaler] Configure called — registering pass");
             var seq = InPhase(BuildPhase.Transforming);
             seq.AfterPlugin("nadena.dev.modular-avatar");
             seq.Run(MmdBlendShapeScalePass.Instance);
