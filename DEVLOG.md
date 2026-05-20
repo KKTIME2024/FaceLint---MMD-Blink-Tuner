@@ -1,34 +1,16 @@
 # MmdBlendShapeScaler — 开发日志
 
-## v0.2.0 — 三语 UI 支持 (计划中)
+## v0.2.0 — 三语 UI 支持 (已实现 2026-05-20)
 
-**状态**: 🔜 待 v0.1.0 内测反馈后启动
+**状态**: ✅ 已实现。新增 `Editor/Strings.cs`（字典式三语方案），README 同步更新为三语。
 
-### 方案
+### 实现
 
-参考 BlendShapeCapper (LGC) 的字典式三语方案，不引入 i18n 框架：
-
-```
-enum UILang { ZhCN, En, Ja }
-
-class Strings {
-    // 所有 UI 标签字段
-    static Strings For(UILang lang) { switch ... }
-}
-```
-
-顶部 `EnumPopup` 切换语言，所有 UI 用 `strings.XXX` 引用。
-
-### 需翻译的字符串 (~30 个)
-
-| 区域 | 字段 |
-|---|---|
-| 窗口 & 菜单 | ToolTitle, MenuItem |
-| 网格视图 | ScanBtn, ThumbnailSize, Eyes/Mouth/Eyebrows/Other, ResetAll, ReScan |
-| 详情视图 | ScaleFactor, QuickLabel, SceneViewHint, Back/Prev/Next, Confirm/Cancel |
-| Inspector | TargetRenderer, OpenCalibrator, ClearAll, NoScaleHint, ConfiguredFmt |
-| 状态 | StatusReady, StatusNoSMR, StatusNoMMD, ProgressFmt |
-| Shape 描述 | 已有双语（`中文说明` 字段），不用动 |
+- `Strings.cs`：`enum UILang { En, ZhCN, Ja }` + `Strings` 类，~40 个翻译字段，`Strings.For(lang)` 工厂，语言持久化到 `EditorPrefs`
+- `MmdCalibratorWindow.cs`：顶部 `EnumPopup` 语言切换器，所有 UI 标签改用 `Strings.Current.XXX`
+- `MmdBlendShapeScalerEditor.cs`：Inspector 标签全部接入三语
+- `README.md`：日本語 / English / 中文 三个完整章节
+- Undo 标签和 Debug.Log 保留英文（开发者面向，Unity 惯例）
 
 ### 其他 v0.2 候选
 

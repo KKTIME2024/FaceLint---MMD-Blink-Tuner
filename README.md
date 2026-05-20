@@ -1,26 +1,88 @@
 # VRC Avatar MMD & Blink Fixer
 
-Fix over-closed eyes and exaggerated expressions on VRChat MMD avatars. Scale MMD blend shape deltas per shape, auto-applied non-destructively at build time via NDMF.
+> Fix over-closed eyes and exaggerated expressions on VRChat MMD avatars. Scale MMD blend shape deltas per shape, auto-applied non-destructively at build time via NDMF.
+>
+> VRChatのMMDアバターで、目が閉じすぎたり表情が誇張される問題を修正します。MMDブレンドシェイプのデルタを形状ごとに拡大縮小し、NDMFでビルド時に非破壊的に自動適用します。
+>
+> 修复 VRChat MMD 模型眼睛过度闭合和表情夸张的问题。按形态键单独缩放 MMD 变形增量，通过 NDMF 在构建时自动应用，不修改原始网格。
 
-## How It Works
+---
 
-MMD worlds drive blend shapes at weight=100. If your avatar has base values on native shapes (e.g. `eye_close=20`), the actual result is `20 + 100 = 120` — over-closed eyes, over-stretched mouth.
+## 日本語
 
-This tool lets you scale each MMD blend shape down (or up) so the final result looks natural. Changes are applied at build time by cloning the mesh and scaling vertex deltas — your original mesh asset is never touched.
+### 仕組み
 
-## Requirements
+MMDワールドはブレンドシェイプを weight=100 で駆動します。アバターのネイティブシェイプに基準値（例：`eye_close=20`）があると、実際の結果は `20 + 100 = 120` になり、目が閉じすぎたり口が伸びすぎたりします。
+
+このツールでは各MMDブレンドシェイプを縮小（または拡大）して、最終的な見た目を自然に調整できます。変更はビルド時にメッシュをクローンして頂点デルタを拡大縮小することで適用され、元のメッシュアセットは一切変更されません。
+
+### 要件
 
 - Unity 2022.3+
 - VRCSDK3 (com.vrchat.avatars >= 3.7.0)
 - NDMF (nadena.dev.ndmf >= 1.7.4)
 
-## Install
+### インストール
+
+**方法A（推奨）:** [Releases](https://github.com/KKTIME2024/vrc-avatar-mmd-blink-fixer/releases) から `.unitypackage` をダウンロードし、Unity Project ウィンドウにドラッグしてすべてインポート。
+
+**方法B（手動）:** `Runtime/` と `Editor/` を `Assets/VrcAvatarMmdBlinkFixer/` にコピー。
+
+### 使い方
+
+1. コンポーネントを追加：アバターを選択 → **Add Component** → **VRC Avatar MMD & Blink Fixer**
+2. 顔/体の **SkinnedMeshRenderer** を Target Renderer フィールドにドラッグ
+3. **Open Calibrator** をクリック、またはメニュー **Tools → VRC Avatar MMD & Blink Fixer** を使用
+4. **Scan MMD Shapes** をクリックしてメッシュ上の全MMDブレンドシェイプを検出
+5. サムネイルをクリックして詳細ビューに入る
+6. スライダー（0–200%）をドラッグ — Scene View にライブプレビューが表示されます
+7. ← Back / ◀ 前へ / 次へ ▶ で保存して次のシェイプに移動
+8. クイック適用：確認済みの値がスライダーの下にショートカットボタンとして表示されます
+9. 完了したらウィンドウを閉じて **Build & Upload** — NDMFがすべての倍率を自動適用します
+
+### ビルド時の処理
+
+アップロード時にNDMFパスが以下を実行します：
+
+1. 対象メッシュをクローン (`Object.Instantiate`)
+2. すべてのブレンドシェイプをクリア
+3. 全フレームを再追加 — 設定されたシェイプの頂点デルタが拡大縮小され、法線/接線はそのまま
+4. クローンをレンダラーに割り当て
+5. 設定コンポーネントを破棄（`IEditorOnly` のためビルドには含まれない）
+
+### 確認方法
+
+Build & Upload 中に Unity Console で以下を確認してください：
+
+```
+[MMDBlinkFixer] Execute started. Found 1 scaler(s) on avatar.
+[MMDBlinkFixer] Processed 334 blendshapes for 'Body'. Scaled: 12.
+[MMDBlinkFixer] Execute finished.
+```
+
+---
+
+## English
+
+### How It Works
+
+MMD worlds drive blend shapes at weight=100. If your avatar has base values on native shapes (e.g. `eye_close=20`), the actual result is `20 + 100 = 120` — over-closed eyes, over-stretched mouth.
+
+This tool lets you scale each MMD blend shape down (or up) so the final result looks natural. Changes are applied at build time by cloning the mesh and scaling vertex deltas — your original mesh asset is never touched.
+
+### Requirements
+
+- Unity 2022.3+
+- VRCSDK3 (com.vrchat.avatars >= 3.7.0)
+- NDMF (nadena.dev.ndmf >= 1.7.4)
+
+### Install
 
 **Method A (recommended):** Download `.unitypackage` from [Releases](https://github.com/KKTIME2024/vrc-avatar-mmd-blink-fixer/releases), drag into Unity Project window, import all.
 
 **Method B (manual):** Copy `Runtime/` and `Editor/` into `Assets/VrcAvatarMmdBlinkFixer/`.
 
-## Usage
+### Usage
 
 1. Add component: select your avatar → **Add Component** → **VRC Avatar MMD & Blink Fixer**
 2. Drag your face/body **SkinnedMeshRenderer** into the Target Renderer field
@@ -32,7 +94,7 @@ This tool lets you scale each MMD blend shape down (or up) so the final result l
 8. Quick-apply: previously confirmed values appear as shortcut buttons below the slider
 9. When done, close the window and **Build & Upload** — NDMF applies all scales automatically
 
-## Build-Time Processing
+### Build-Time Processing
 
 During upload, the NDMF pass:
 
@@ -42,7 +104,7 @@ During upload, the NDMF pass:
 4. Assigns the clone to the renderer
 5. Destroys the config component (it's `IEditorOnly`, never enters the built asset)
 
-## Verify
+### Verify
 
 Check Unity Console during Build & Upload for:
 
@@ -52,6 +114,62 @@ Check Unity Console during Build & Upload for:
 [MMDBlinkFixer] Execute finished.
 ```
 
+---
+
+## 中文
+
+### 原理
+
+MMD 世界以 weight=100 驱动形态键。如果你的模型在原生形态键上有基础值（例如 `eye_close=20`），实际结果为 `20 + 100 = 120`——眼睛过度闭合，嘴巴过度拉伸。
+
+本工具可让你将每个 MMD 形态键缩小（或放大），使最终效果自然。修改在构建时通过克隆网格并缩放顶点增量来应用——原始网格资产不会被修改。
+
+### 要求
+
+- Unity 2022.3+
+- VRCSDK3 (com.vrchat.avatars >= 3.7.0)
+- NDMF (nadena.dev.ndmf >= 1.7.4)
+
+### 安装
+
+**方法 A（推荐）：** 从 [Releases](https://github.com/KKTIME2024/vrc-avatar-mmd-blink-fixer/releases) 下载 `.unitypackage`，拖入 Unity Project 窗口，全部导入。
+
+**方法 B（手动）：** 将 `Runtime/` 和 `Editor/` 复制到 `Assets/VrcAvatarMmdBlinkFixer/`。
+
+### 使用方法
+
+1. 添加组件：选择你的模型 → **Add Component** → **VRC Avatar MMD & Blink Fixer**
+2. 将面部/身体的 **SkinnedMeshRenderer** 拖入 Target Renderer 字段
+3. 点击 **Open Calibrator**，或使用菜单 **Tools → VRC Avatar MMD & Blink Fixer**
+4. 点击 **Scan MMD Shapes** 找到该网格上的所有 MMD 形态键
+5. 点击缩略图进入详情视图
+6. 拖动滑块（0–200%）——Scene View 显示实时预览
+7. 使用 ← Back / ◀ 上一个 / 下一个 ▶ 导航，保存并移至下一个形态键
+8. 快速应用：之前确认的值会作为快捷按钮显示在滑块下方
+9. 完成后关闭窗口，**Build & Upload**——NDMF 会自动应用所有缩放
+
+### 构建时处理
+
+上传时，NDMF pass 会：
+
+1. 克隆目标网格（`Object.Instantiate`）
+2. 清除所有形态键
+3. 重新添加每一帧——已配置形态键的顶点增量被缩放，法线/切线保持不变
+4. 将克隆网格分配给渲染器
+5. 销毁配置组件（它是 `IEditorOnly`，不会进入构建资产）
+
+### 验证
+
+在 Build & Upload 期间检查 Unity Console：
+
+```
+[MMDBlinkFixer] Execute started. Found 1 scaler(s) on avatar.
+[MMDBlinkFixer] Processed 334 blendshapes for 'Body'. Scaled: 12.
+[MMDBlinkFixer] Execute finished.
+```
+
+---
+
 ## License
 
-Internal testing phase — not for redistribution.
+Internal testing phase — not for redistribution. / 内部テスト段階 — 再配布禁止。 / 内测阶段 — 请勿分发。

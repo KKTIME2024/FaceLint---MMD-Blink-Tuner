@@ -8,10 +8,12 @@ namespace MmdBlendShapeScaler
     {
         public override void OnInspectorGUI()
         {
+            var S = Strings.Current;
             var scaler = (MmdBlendShapeScaler)target;
 
             // ── Renderer reference ──
-            var newRenderer = (SkinnedMeshRenderer)EditorGUILayout.ObjectField("Target Renderer", scaler.targetRenderer, typeof(SkinnedMeshRenderer), true);
+            var newRenderer = (SkinnedMeshRenderer)EditorGUILayout.ObjectField(
+                S.TargetRenderer, scaler.targetRenderer, typeof(SkinnedMeshRenderer), true);
             if (newRenderer != scaler.targetRenderer)
             {
                 Undo.RecordObject(scaler, "Set Target Renderer");
@@ -23,26 +25,28 @@ namespace MmdBlendShapeScaler
             EditorGUILayout.Space(4);
             if (scaler.Count == 0)
             {
-                EditorGUILayout.HelpBox("No scale configured. All MMD blendshapes remain at 100%.", MessageType.Info);
+                EditorGUILayout.HelpBox(S.NoScaleHint, MessageType.Info);
             }
             else
             {
-                EditorGUILayout.LabelField($"Configured: {scaler.Count} blendshape(s)", EditorStyles.boldLabel);
+                EditorGUILayout.LabelField(
+                    string.Format(S.ConfiguredFmt, scaler.Count), EditorStyles.boldLabel);
                 foreach (var entry in scaler.GetModifiedEntries())
                 {
-                    EditorGUILayout.LabelField($"  {entry.name}  →  {entry.scale * 100f:F0}%");
+                    EditorGUILayout.LabelField(
+                        string.Format(S.EntryFmt, entry.name, entry.scale * 100f));
                 }
             }
 
             // ── Buttons ──
             EditorGUILayout.Space(8);
-            if (GUILayout.Button("Open Calibrator", GUILayout.Height(30)))
+            if (GUILayout.Button(S.OpenCalibrator, GUILayout.Height(30)))
             {
                 MmdCalibratorWindow.ShowWindow(scaler);
             }
 
             EditorGUILayout.BeginHorizontal();
-            if (GUILayout.Button("Clear All Scales"))
+            if (GUILayout.Button(S.ClearAllScales))
             {
                 Undo.RecordObject(scaler, "Clear MMD Scale Mappings");
                 scaler.RemoveAll();

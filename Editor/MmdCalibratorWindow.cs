@@ -20,7 +20,7 @@ namespace MmdBlendShapeScaler
             public int meshIndex;
             public int sliderValue = 100;  // 0-200 (displayed as %)
             public Texture2D thumbnail;
-            
+
             public float Scale => sliderValue / 100f;
             public bool IsModified => sliderValue != 100;
         }
@@ -28,7 +28,7 @@ namespace MmdBlendShapeScaler
         private List<ShapeEntry> _entries = new List<ShapeEntry>();
         private ShapeEntry _selectedEntry;  // null = grid mode
         private Vector2 _scrollPos;
-        
+
         // ── View options ──
         private int _thumbnailSize = 150;
         private static List<float> _recentValues = new List<float>();  // sorted ascending, deduped
@@ -43,7 +43,8 @@ namespace MmdBlendShapeScaler
         // ── Window ──
         public static void ShowWindow(MmdBlendShapeScaler scaler)
         {
-            var window = GetWindow<MmdCalibratorWindow>("VRC Avatar MMD & Blink Fixer");
+            var title = Strings.Current.WindowTitle;
+            var window = GetWindow<MmdCalibratorWindow>(title);
             window.minSize = new Vector2(520, 400);
             window._scaler = scaler;
             window._faceRenderer = scaler.targetRenderer;
@@ -53,7 +54,8 @@ namespace MmdBlendShapeScaler
         [MenuItem("Tools/VRC Avatar MMD & Blink Fixer")]
         public static void OpenStandalone()
         {
-            var window = GetWindow<MmdCalibratorWindow>("VRC Avatar MMD & Blink Fixer");
+            var title = Strings.Current.WindowTitle;
+            var window = GetWindow<MmdCalibratorWindow>(title);
             window.minSize = new Vector2(520, 400);
             window.Show();
         }
@@ -80,7 +82,7 @@ namespace MmdBlendShapeScaler
 
         private void OnPlayModeStateChanged(PlayModeStateChange state)
         {
-            if (state == PlayModeStateChange.EnteredPlayMode || 
+            if (state == PlayModeStateChange.EnteredPlayMode ||
                 state == PlayModeStateChange.EnteredEditMode)
             {
                 RestoreAllWeights();
@@ -98,16 +100,28 @@ namespace MmdBlendShapeScaler
 
         private void OnGUI()
         {
+            var S = Strings.Current;
+
             // ── Header ──
             EditorGUILayout.Space(4);
-            EditorGUILayout.LabelField("VRC Avatar MMD & Blink Fixer", EditorStyles.boldLabel);
-            
+            EditorGUILayout.BeginHorizontal();
+            EditorGUILayout.LabelField(S.WindowTitle, EditorStyles.boldLabel);
+            GUILayout.FlexibleSpace();
+            EditorGUILayout.LabelField(S.LangLabel, GUILayout.Width(40));
+            var newLang = (UILang)EditorGUILayout.EnumPopup(Strings.Language, GUILayout.Width(70));
+            if (newLang != Strings.Language)
+            {
+                Strings.Language = newLang;
+                S = Strings.Current;
+            }
+            EditorGUILayout.EndHorizontal();
+
             // ── Renderer selection ──
             EditorGUILayout.BeginHorizontal();
             var prevRenderer = _faceRenderer;
             _faceRenderer = (SkinnedMeshRenderer)EditorGUILayout.ObjectField(
-                "Face Renderer", _faceRenderer, typeof(SkinnedMeshRenderer), true);
-            
+                S.FaceRenderer, _faceRenderer, typeof(SkinnedMeshRenderer), true);
+
             // Track the scaler component and sync targetRenderer on selection change
             if (prevRenderer != _faceRenderer && _faceRenderer != null)
             {
@@ -121,7 +135,7 @@ namespace MmdBlendShapeScaler
             }
 
             EditorGUI.BeginDisabledGroup(_faceRenderer == null);
-            if (GUILayout.Button("Scan MMD Shapes", GUILayout.Width(120)))
+            if (GUILayout.Button(S.ScanMmdShapes, GUILayout.Width(140)))
             {
                 Scan();
             }
@@ -131,21 +145,21 @@ namespace MmdBlendShapeScaler
             // ── Component status ──
             if (_scaler != null)
             {
+                var status = _scaler.IsValid ? S.StatusValid : S.StatusInvalid;
                 EditorGUILayout.LabelField(
-                    $"Scales stored: {_scaler.Count} | " +
-                    $"Component: {(_scaler.IsValid ? "\u2713 Valid" : "\u2717 Invalid (no mesh)")}",
+                    string.Format(S.ComponentStatusFmt, _scaler.Count, status),
                     EditorStyles.miniLabel);
             }
 
             // ── Help boxes ──
             if (_faceRenderer == null)
             {
-                EditorGUILayout.HelpBox("Drag in the face SkinnedMeshRenderer (usually the Body mesh).", MessageType.Info);
+                EditorGUILayout.HelpBox(S.HelpDragRenderer, MessageType.Info);
                 return;
             }
             if (_entries.Count == 0)
             {
-                EditorGUILayout.HelpBox("Click 'Scan MMD Shapes' to generate thumbnails.", MessageType.Info);
+                EditorGUILayout.HelpBox(S.HelpClickScan, MessageType.Info);
                 return;
             }
 
@@ -164,60 +178,64 @@ namespace MmdBlendShapeScaler
 
         private void DrawGridView()
         {
+            var S = Strings.Current;
             int modifiedCount = _entries.Count(e => e.IsModified);
             int dirtyCount = _entries.Count(e => Mathf.Abs(e.sliderValue - GetSavedScale(e.name) * 100f) > 0.5f);
 
             // ── Summary bar ──
-            string summary = $"{_entries.Count} MMD shapes";
+            string summary;
             if (modifiedCount > 0)
             {
+                summary = string.Format(S.SummaryModifiedFmt, _entries.Count, modifiedCount);
+                if (dirtyCount > 0)
+                    summary += string.Format(S.SummaryDirtyFmt, dirtyCount);
+
                 var c = GUI.color;
                 GUI.color = new Color(1f, 0.65f, 0.2f);
-                EditorGUILayout.LabelField($"{summary} | Modified: {modifiedCount}" +
-                    (dirtyCount > 0 ? $" | Unconfirmed: {dirtyCount}" : ""),
-                    EditorStyles.miniLabel);
+                EditorGUILayout.LabelField(summary, EditorStyles.miniLabel);
                 GUI.color = c;
             }
             else
             {
-                EditorGUILayout.LabelField(summary, EditorStyles.miniLabel);
+                EditorGUILayout.LabelField(string.Format(S.SummaryFmt, _entries.Count), EditorStyles.miniLabel);
             }
 
             // ── View options ──
             EditorGUILayout.BeginHorizontal();
-            _thumbnailSize = EditorGUILayout.IntSlider("Thumbnail Size", _thumbnailSize, 100, 150);
+            _thumbnailSize = EditorGUILayout.IntSlider(S.ThumbnailSize, _thumbnailSize, 100, 150);
             EditorGUILayout.EndHorizontal();
 
             EditorGUILayout.Space(4);
 
             _scrollPos = EditorGUILayout.BeginScrollView(_scrollPos);
 
-            DrawCategoryGrid("Eyes", MmdShapeCategory.眼部, ref _foldoutEye);
-            DrawCategoryGrid("Mouth", MmdShapeCategory.嘴部, ref _foldoutMouth);
-            DrawCategoryGrid("Eyebrows", MmdShapeCategory.眉毛, ref _foldoutBrow);
-            DrawCategoryGrid("Other", MmdShapeCategory.未知, ref _foldoutOther);
+            DrawCategoryGrid(S.Eyes, MmdShapeCategory.眼部, ref _foldoutEye);
+            DrawCategoryGrid(S.Mouth, MmdShapeCategory.嘴部, ref _foldoutMouth);
+            DrawCategoryGrid(S.Eyebrows, MmdShapeCategory.眉毛, ref _foldoutBrow);
+            DrawCategoryGrid(S.Other, MmdShapeCategory.未知, ref _foldoutOther);
 
             EditorGUILayout.EndScrollView();
 
             // ── Bottom bar ──
             EditorGUILayout.Space(4);
             EditorGUILayout.BeginHorizontal();
-            if (GUILayout.Button("Reset All to 100%", GUILayout.Height(26)))
+            if (GUILayout.Button(S.ResetAll, GUILayout.Height(26)))
                 ResetAll();
-            if (GUILayout.Button("Re-scan", GUILayout.Height(26)))
+            if (GUILayout.Button(S.ReScan, GUILayout.Height(26)))
                 Scan();
             EditorGUILayout.EndHorizontal();
         }
 
         private void DrawCategoryGrid(string title, MmdShapeCategory category, ref bool foldout)
         {
-            var items = _entries.Where(e => (e.category & category) != 0 || 
+            var S = Strings.Current;
+            var items = _entries.Where(e => (e.category & category) != 0 ||
                 (category == MmdShapeCategory.未知 && e.category == MmdShapeCategory.未知)).ToList();
             if (items.Count == 0) return;
 
             int modified = items.Count(e => e.IsModified);
             string label = $"{title} ({items.Count})";
-            if (modified > 0) label += $" [modified: {modified}]";
+            if (modified > 0) label += $" {string.Format(S.ModifiedCountFmt, modified)}";
 
             foldout = EditorGUILayout.Foldout(foldout, label, true);
             if (!foldout) return;
@@ -246,6 +264,7 @@ namespace MmdBlendShapeScaler
 
         private void DrawGridCell(ShapeEntry entry)
         {
+            var S = Strings.Current;
             EditorGUILayout.BeginVertical(GUILayout.Width(_thumbnailSize));
 
             var oldBg = GUI.backgroundColor;
@@ -255,7 +274,7 @@ namespace MmdBlendShapeScaler
             var thumbContent = new GUIContent
             {
                 image = entry.thumbnail,
-                tooltip = $"{entry.name}\n{entry.description}\nCurrent: {entry.sliderValue}%"
+                tooltip = $"{entry.name}\n{entry.description}\n{string.Format(S.CurrentTooltipFmt, entry.sliderValue)}"
             };
 
             if (GUILayout.Button(thumbContent, GUILayout.Width(_thumbnailSize), GUILayout.Height(_thumbnailSize)))
@@ -280,7 +299,7 @@ namespace MmdBlendShapeScaler
             }
             else
             {
-                EditorGUILayout.LabelField("100%", EditorStyles.miniLabel, GUILayout.Width(_thumbnailSize));
+                EditorGUILayout.LabelField(S.PctValue, EditorStyles.miniLabel, GUILayout.Width(_thumbnailSize));
             }
 
             EditorGUILayout.EndVertical();
@@ -292,12 +311,13 @@ namespace MmdBlendShapeScaler
 
         private void DrawDetailView()
         {
+            var S = Strings.Current;
             var entry = _selectedEntry;
 
             // ── Navigation ──
             bool exitDetail = false;
             EditorGUILayout.BeginHorizontal();
-            if (GUILayout.Button("\u2190 Back to Grid", GUILayout.Width(100)))
+            if (GUILayout.Button(S.BackToGrid, GUILayout.Width(120)))
             {
                 ConfirmCurrent();
                 DeselectCurrent();
@@ -310,7 +330,7 @@ namespace MmdBlendShapeScaler
 
             int curIdx = _entries.IndexOf(entry);
             EditorGUI.BeginDisabledGroup(curIdx <= 0);
-            if (GUILayout.Button("\u25C0 Prev", GUILayout.Width(60)))
+            if (GUILayout.Button(S.Prev, GUILayout.Width(80)))
             {
                 ConfirmCurrent();
                 DeselectCurrent();
@@ -319,7 +339,7 @@ namespace MmdBlendShapeScaler
             }
             EditorGUI.EndDisabledGroup();
             EditorGUI.BeginDisabledGroup(curIdx >= _entries.Count - 1);
-            if (GUILayout.Button("Next \u25B6", GUILayout.Width(60)))
+            if (GUILayout.Button(S.Next, GUILayout.Width(80)))
             {
                 ConfirmCurrent();
                 DeselectCurrent();
@@ -334,20 +354,20 @@ namespace MmdBlendShapeScaler
 
             // ── Thumbnail + Controls ──
             EditorGUILayout.BeginHorizontal();
-            
+
             // Large reference thumbnail
             if (entry.thumbnail != null)
                 GUILayout.Box(entry.thumbnail, GUILayout.Width(200), GUILayout.Height(200));
             else
-                GUILayout.Box("No Preview", GUILayout.Width(200), GUILayout.Height(200));
+                GUILayout.Box(S.NoPreview, GUILayout.Width(200), GUILayout.Height(200));
 
             GUILayout.Space(12);
 
             // Slider and presets
             EditorGUILayout.BeginVertical();
-            
-            EditorGUILayout.LabelField("Scale Factor", EditorStyles.boldLabel);
-            
+
+            EditorGUILayout.LabelField(S.ScaleFactor, EditorStyles.boldLabel);
+
             // Slider — preview only, save on navigation / confirm
             float newVal = EditorGUILayout.Slider(entry.sliderValue, 0f, 200f);
             if (Mathf.Abs(newVal - entry.sliderValue) > 0.1f)
@@ -361,10 +381,10 @@ namespace MmdBlendShapeScaler
 
             // Quick-apply: up to 5 recent values (including 100%)
             EditorGUILayout.BeginHorizontal();
-            EditorGUILayout.LabelField("Quick:", EditorStyles.miniLabel, GUILayout.Width(36));
+            EditorGUILayout.LabelField(S.Quick, EditorStyles.miniLabel, GUILayout.Width(36));
             int shown = 0;
             int maxShow = 5;
-            if (GUILayout.Button("100%", GUILayout.Width(45))) { entry.sliderValue = 100; PreviewOnMesh(entry); ConfirmCurrent(); }
+            if (GUILayout.Button(S.PctValue, GUILayout.Width(45))) { entry.sliderValue = 100; PreviewOnMesh(entry); ConfirmCurrent(); }
             shown++;
             foreach (float val in _recentValues)
             {
@@ -382,12 +402,12 @@ namespace MmdBlendShapeScaler
 
             // Status
             EditorGUILayout.Space(8);
-            EditorGUILayout.LabelField("Scene View shows live preview. Rotate to inspect.", EditorStyles.miniLabel);
+            EditorGUILayout.LabelField(S.SceneViewHint, EditorStyles.miniLabel);
             if (entry.IsModified)
             {
                 var c = GUI.color;
                 GUI.color = new Color(1f, 0.6f, 0.2f);
-                EditorGUILayout.LabelField($"Scaled to {entry.sliderValue}% (default 100%)", EditorStyles.miniLabel);
+                EditorGUILayout.LabelField(string.Format(S.ScaledToFmt, entry.sliderValue), EditorStyles.miniLabel);
                 GUI.color = c;
             }
 
@@ -397,12 +417,12 @@ namespace MmdBlendShapeScaler
             // ── Bottom actions ──
             EditorGUILayout.Space(8);
             EditorGUILayout.BeginHorizontal();
-            if (GUILayout.Button("\u2713 Confirm", GUILayout.Height(30)))
+            if (GUILayout.Button(S.Confirm, GUILayout.Height(30)))
             {
                 ConfirmCurrent();
                 DeselectCurrent();
             }
-            if (GUILayout.Button("\u2717 Cancel", GUILayout.Height(30)))
+            if (GUILayout.Button(S.Cancel, GUILayout.Height(30)))
             {
                 // Restore from component value
                 float saved = GetSavedScale(entry.name) * 100f;
@@ -488,11 +508,12 @@ namespace MmdBlendShapeScaler
 
         private void ResetAll()
         {
+            var S = Strings.Current;
             if (_entries.Any(e => e.IsModified))
             {
-                if (!EditorUtility.DisplayDialog("Reset All",
-                    "Reset ALL MMD shapes to 100%? This cannot be undone.",
-                    "Reset All", "Cancel"))
+                if (!EditorUtility.DisplayDialog(S.DlgResetTitle,
+                    S.DlgResetMsg,
+                    S.DlgResetBtn, S.DlgCancelBtn))
                     return;
             }
 
@@ -518,15 +539,15 @@ namespace MmdBlendShapeScaler
         {
             if (_faceRenderer == null) return;
 
-            int unsaved = _entries.Count(e => 
+            var S = Strings.Current;
+            int unsaved = _entries.Count(e =>
                 Mathf.Abs(e.sliderValue - GetSavedScale(e.name) * 100f) > 0.5f);
-            
+
             if (unsaved > 0)
             {
-                if (!EditorUtility.DisplayDialog("Re-scan",
-                    $"{unsaved} shapes have unconfirmed changes. Re-scanning will lose them.\n\n" +
-                    "Confirm changes first or enable Auto-Confirm mode.",
-                    "Re-scan (discard changes)", "Cancel"))
+                if (!EditorUtility.DisplayDialog(S.DlgRescanTitle,
+                    string.Format(S.DlgRescanMsgFmt, unsaved),
+                    S.DlgRescanBtn, S.DlgCancelBtn))
                     return;
             }
 
@@ -565,6 +586,14 @@ namespace MmdBlendShapeScaler
                 .ThenBy(e => e.name)
                 .ToList();
 
+            // Ensure all weights are zero before rendering thumbnails
+            RestoreAllWeights();
+
+            // Warm up AnimationMode pipeline — the first BeginSampling→Sample→EndSampling
+            // cycle lazily initializes and doesn't flush to mesh, causing first thumbnail
+            // to render at weight=0. A full dummy cycle on the actual renderer fixes this.
+            BlendShapePreviewRenderer.WarmupAnimationMode(_faceRenderer);
+
             // Generate thumbnails
             try
             {
@@ -572,8 +601,8 @@ namespace MmdBlendShapeScaler
                 {
                     var entry = _entries[i];
                     EditorUtility.DisplayProgressBar(
-                        "VRC Avatar MMD & Blink Fixer",
-                        $"Rendering {entry.name} ({i + 1}/{_entries.Count})",
+                        S.ProgressTitle,
+                        string.Format(S.ProgressFmt, entry.name, i + 1, _entries.Count),
                         (float)i / _entries.Count);
 
                     entry.thumbnail = BlendShapePreviewRenderer.Render(

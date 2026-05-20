@@ -9,6 +9,52 @@ namespace MmdBlendShapeScaler
     /// </summary>
     public static class BlendShapePreviewRenderer
     {
+        private static bool _warmedUp;
+
+        /// <summary>
+        /// 预热 AnimationMode 完整管线。
+        /// Unity 的 AnimationMode 在首次调用时存在延迟初始化问题：
+        /// BeginSampling → SampleAnimationClip → EndSampling 路径的第一个周期
+        /// 不会把动画状态同步到网格，导致第一个缩略图捕获到权重为 0 的画面。
+        /// 这里用一个包含真实 Clip + 完整采样周期的空操作来预热。
+        /// </summary>
+        public static void WarmupAnimationMode(SkinnedMeshRenderer renderer)
+        {
+            if (_warmedUp || renderer == null || renderer.sharedMesh == null) return;
+            _warmedUp = true;
+
+            var mesh = renderer.sharedMesh;
+            if (mesh.blendShapeCount == 0) return;
+
+            var clip = new AnimationClip();
+            clip.hideFlags = HideFlags.HideAndDontSave;
+
+            var firstBsName = mesh.GetBlendShapeName(0);
+            AnimationUtility.SetEditorCurve(
+                clip,
+                new EditorCurveBinding
+                {
+                    path = "",
+                    type = typeof(SkinnedMeshRenderer),
+                    propertyName = $"blendShape.{firstBsName}"
+                },
+                AnimationCurve.Constant(0, 1f / 60f, 0f)  // weight=0, no visual side effect
+            );
+
+            try
+            {
+                AnimationMode.StartAnimationMode();
+                AnimationMode.BeginSampling();
+                AnimationMode.SampleAnimationClip(renderer.gameObject, clip, 1f / 60f);
+                AnimationMode.EndSampling();
+            }
+            finally
+            {
+                AnimationMode.StopAnimationMode();
+                Object.DestroyImmediate(clip);
+            }
+        }
+
         /// <summary>
         /// 渲染单个 BlendShape 在指定权重下的缩略图。
         /// 调用者负责用 DestroyImmediate 释放返回的 Texture2D。
