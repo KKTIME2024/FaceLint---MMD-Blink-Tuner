@@ -2,15 +2,15 @@
 
 [中文](../README.md) [English] [日本語](README_JA.md)
 
-> Fix over-closed eyes and exaggerated expressions on VRChat MMD avatars. Scale MMD blend shape deltas per shape, auto-applied non-destructively at build time via NDMF.
+> Fixes over-closed eyes and certain exaggerated expressions after tweaking VRChat MMD Avatars. Scale MMD blend shape deltas per shape, auto-applied non-destructively at build time via NDMF.
 
 ---
 
 ## How It Works
 
-MMD worlds drive blend shapes at weight=100. If your avatar has base values on native shapes (e.g. `eye_close=20`), the actual result is `20 + 100 = 120` — over-closed eyes, over-stretched mouth.
+MMD worlds drive blend shapes at weight=100. If your avatar has base values on native shapes (e.g. `eye_close=20`), the result is over-closed eyes.
 
-This tool lets you scale each MMD blend shape down (or up) so the final result looks natural. Changes are applied at build time by cloning the mesh and scaling vertex deltas — your original mesh asset is never touched.
+This tool lets you preview in Unity, scale each MMD blend shape down (or up) and observe the result in real time in the Scene View. Changes are applied at build time by cloning the mesh and scaling vertex deltas — your original mesh asset is never touched.
 
 ## Requirements
 
@@ -27,14 +27,15 @@ This tool lets you scale each MMD blend shape down (or up) so the final result l
 ## Usage
 
 1. Add component: select your avatar → **Add Component** → **VRC Avatar MMD & Blink Fixer**
-2. Drag your face/body **SkinnedMeshRenderer** into the Target Renderer field
+2. Drag the avatar's face into the Target Renderer field (auto-detects **SkinnedMeshRenderer**)
 3. Click **Open Calibrator**, or use menu **Tools → VRC Avatar MMD & Blink Fixer**
-4. Click **Scan MMD Shapes** to find all MMD blend shapes on that mesh
-5. Click a thumbnail to enter detail view
-6. Drag the slider (0–200%) — Scene View shows live preview
-7. Navigate with ← Back / ◀ Prev / Next ▶ to save and move to the next shape
-8. Quick-apply: previously confirmed values appear as shortcut buttons below the slider
-9. When done, close the window and **Build & Upload** — NDMF applies all scales automatically
+4. Switch language if needed
+5. Click **Scan MMD Shapes** to find all MMD blend shapes on that mesh
+6. Click any thumbnail to enter detail view
+7. Drag the slider (0–200%) — Scene View shows live preview, auto-saves
+8. Navigate with ← Back / ◀ Prev / Next ▶ to go back or move to prev/next shape
+9. Quick-apply: previously confirmed values appear as shortcut buttons below the slider
+10. When done, close the window and **Build & Upload** — NDMF applies all scales automatically
 
 ## Build-Time Processing
 
