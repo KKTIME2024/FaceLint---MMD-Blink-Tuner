@@ -2,27 +2,9 @@
 
 [中文](../README.md) [English] [日本語](README_JA.md)
 
-> Fixes over-closed eyes and certain exaggerated expressions after tweaking VRChat MMD Avatars. Scale MMD blend shape deltas per shape, auto-applied non-destructively at build time via NDMF.
+> Fixes over-closed eyes and certain exaggerated expressions after tweaking VRChat MMD Avatars. Non-destructively auto-applied at build time via NDMF.
 
 ---
-
-## How It Works
-
-MMD worlds drive blend shapes at weight=100. If your avatar has base values on native shapes (e.g. `eye_close=20`), the result is over-closed eyes.
-
-This tool lets you preview in Unity, scale each MMD blend shape down (or up) and observe the result in real time in the Scene View. Changes are applied at build time by cloning the mesh and scaling vertex deltas — your original mesh asset is never touched.
-
-## Requirements
-
-- Unity 2022.3+
-- VRCSDK3 (com.vrchat.avatars >= 3.7.0)
-- NDMF (nadena.dev.ndmf >= 1.7.4)
-
-## Install
-
-**Method A (recommended):** Download `.unitypackage` from [Releases](https://github.com/KKTIME2024/vrc-avatar-mmd-blink-fixer/releases), drag into Unity Project window, import all.
-
-**Method B (manual):** Copy `Runtime/` and `Editor/` into `Assets/VrcAvatarMmdBlinkFixer/`.
 
 ## Usage
 
@@ -36,6 +18,24 @@ This tool lets you preview in Unity, scale each MMD blend shape down (or up) and
 8. Navigate with ← Back / ◀ Prev / Next ▶ to go back or move to prev/next shape
 9. Quick-apply: previously confirmed values appear as shortcut buttons below the slider
 10. When done, close the window and **Build & Upload** — NDMF applies all scales automatically
+
+## How It Works
+
+MMD worlds drive blend shapes at weight=100. If your avatar has base values on native shapes (e.g. `eye_close=20`), the result is over-closed eyes.
+
+This tool lets you preview in Unity, scale each MMD blend shape down (or up) and observe the result in real time in the Scene View. Changes are applied at build time by cloning the mesh and scaling vertex deltas — your original mesh asset is never touched.
+
+## Install
+
+**Method A (recommended):** Download `.unitypackage` from [Releases](https://github.com/KKTIME2024/vrc-avatar-mmd-blink-fixer/releases), drag into Unity Project window, import all.
+
+**Method B (manual):** Copy `Runtime/` and `Editor/` into `Assets/VrcAvatarMmdBlinkFixer/`.
+
+## Requirements
+
+- Unity 2022.3+
+- VRCSDK3 (com.vrchat.avatars >= 3.7.0)
+- NDMF (nadena.dev.ndmf >= 1.7.4)
 
 ## Build-Time Processing
 

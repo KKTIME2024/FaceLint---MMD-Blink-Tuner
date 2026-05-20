@@ -2,27 +2,9 @@
 
 [中文](../README.md) [English](README_EN.md) [日本語]
 
-> VRChat MMDアバターの捏造後に起こる、目の閉じすぎや特定の表情の誇張を調整します。MMDブレンドシェイプのデルタを形状ごとに拡大縮小し、非破壊的にNDMFでビルド時に自動適用します。
+> VRChat MMDアバターの捏造後に起こる、目の閉じすぎや特定の表情の誇張を調整します。非破壊的にNDMFでビルド時に自動適用。
 
 ---
-
-## 仕組み
-
-MMDワールドはブレンドシェイプを weight=100 で駆動します。アバターのネイティブシェイプに基準値（例：`eye_close=20`）があると、目が閉じすぎる結果になります。
-
-このツールではUnity内でプレビューしながら、各MMDブレンドシェイプを縮小（または拡大）して、Sceneビューでリアルタイムに効果を確認できます。変更はビルド時にメッシュをクローンして頂点デルタを拡大縮小することで適用され、元のメッシュアセットは一切変更されません。
-
-## 要件
-
-- Unity 2022.3+
-- VRCSDK3 (com.vrchat.avatars >= 3.7.0)
-- NDMF (nadena.dev.ndmf >= 1.7.4)
-
-## インストール
-
-**方法A（推奨）:** [Releases](https://github.com/KKTIME2024/vrc-avatar-mmd-blink-fixer/releases) から `.unitypackage` をダウンロードし、Unity Project ウィンドウにドラッグしてすべてインポート。
-
-**方法B（手動）:** `Runtime/` と `Editor/` を `Assets/VrcAvatarMmdBlinkFixer/` にコピー。
 
 ## 使い方
 
@@ -36,6 +18,24 @@ MMDワールドはブレンドシェイプを weight=100 で駆動します。�
 8. ← Back / ◀ 前へ / 次へ ▶ で戻るか前/次のシェイプに移動
 9. クイック適用：確認済みの値がスライダーの下にショートカットボタンとして表示されます
 10. 完了したらウィンドウを閉じて **Build & Upload** — NDMFがすべての倍率を自動適用します
+
+## 仕組み
+
+MMDワールドはブレンドシェイプを weight=100 で駆動します。アバターのネイティブシェイプに基準値（例：`eye_close=20`）があると、目が閉じすぎる結果になります。
+
+このツールではUnity内でプレビューしながら、各MMDブレンドシェイプを縮小（または拡大）して、Sceneビューでリアルタイムに効果を確認できます。変更はビルド時にメッシュをクローンして頂点デルタを拡大縮小することで適用され、元のメッシュアセットは一切変更されません。
+
+## インストール
+
+**方法A（推奨）:** [Releases](https://github.com/KKTIME2024/vrc-avatar-mmd-blink-fixer/releases) から `.unitypackage` をダウンロードし、Unity Project ウィンドウにドラッグしてすべてインポート。
+
+**方法B（手動）:** `Runtime/` と `Editor/` を `Assets/VrcAvatarMmdBlinkFixer/` にコピー。
+
+## 要件
+
+- Unity 2022.3+
+- VRCSDK3 (com.vrchat.avatars >= 3.7.0)
+- NDMF (nadena.dev.ndmf >= 1.7.4)
 
 ## ビルド時の処理
 

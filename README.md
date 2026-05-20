@@ -2,28 +2,9 @@
 
 [中文] [English](README_EN.md) [日本語](README_JA.md)
 
-> 调整VRChat MMD Avatat捏脸后眼睛过度闭合和某些表情夸张的问题。按形态键单独缩放 MMD 变形增量，通过非破坏性的 NDMF 在构建时自动应用，不修改原始网格。
+> 调整VRChat MMD Avatat捏脸后眼睛过度闭合和某些表情夸张的问题。通过非破坏性的 NDMF 在构建时自动应用。
 
 ---
-
-## 原理
-
-MMD 世界以 weight=100 驱动形态键。如果你的模型在原生形态键上有基础值（例如 `eye_close=20`），会导致眼睛过度闭合。
-
-本工具可让你在unity中预览，将每个 MMD 形态键缩小（或放大）并在scene实时观察效果。修改在构建时通过克隆网格并缩放顶点增量来应用——原始网格资产不会被修改。
-
-## 要求
-
-- Unity 2022.3+
-- VRCSDK3 (com.vrchat.avatars >= 3.7.0)
-- NDMF (nadena.dev.ndmf >= 1.7.4)
-
-## 安装
-
-**方法 A（推荐）：** 从 [Releases](https://github.com/KKTIME2024/vrc-avatar-mmd-blink-fixer/releases) 下载 `.unitypackage`，拖入 Unity Project 窗口，全部导入。
-
-**方法 B（手动）：** 将 `Runtime/` 和 `Editor/` 复制到 `Assets/VrcAvatarMmdBlinkFixer/`。
-
 ## 使用方法
 
 1. 添加组件：选择你的模型 → **Add Component** → **VRC Avatar MMD & Blink Fixer**
@@ -36,6 +17,24 @@ MMD 世界以 weight=100 驱动形态键。如果你的模型在原生形态键�
 8. 使用 ← Back / ◀ 上一个 / 下一个 ▶ 导航，返回或者移至上/下一个形态键
 9. 快速应用：之前确认的值会作为快捷按钮显示在滑块下方
 10. 完成后关闭窗口，**Build & Upload**——NDMF 会自动应用所有缩放
+
+## 原理
+
+MMD 世界以 weight=100 驱动形态键。如果你的模型在原生形态键上有基础值（例如 `eye_close=20`），会导致眼睛过度闭合。
+
+本工具可让你在unity中预览，将每个 MMD 形态键缩小（或放大）并在scene实时观察效果。修改在构建时通过克隆网格并缩放顶点增量来应用——原始网格资产不会被修改。
+
+## 安装
+
+**方法 A（推荐）：** 从 [Releases](https://github.com/KKTIME2024/vrc-avatar-mmd-blink-fixer/releases) 下载 `.unitypackage`，拖入 Unity Project 窗口，全部导入。
+
+**方法 B（手动）：** 将 `Runtime/` 和 `Editor/` 复制到 `Assets/VrcAvatarMmdBlinkFixer/`。
+
+## 要求
+
+- Unity 2022.3+
+- VRCSDK3 (com.vrchat.avatars >= 3.7.0)
+- NDMF (nadena.dev.ndmf >= 1.7.4)
 
 ## 构建时处理
 
