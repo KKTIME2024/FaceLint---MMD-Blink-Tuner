@@ -161,7 +161,7 @@ namespace MmdBlendShapeScaler
             float extentMag = bounds.extents.magnitude;
             if (extentMag < 0.001f || float.IsNaN(extentMag))
             {
-                cam.transform.position = bounds.center - faceForward * 1f;
+                cam.transform.position = bounds.center + faceForward * 1f;
                 cam.transform.LookAt(bounds.center);
                 cam.fieldOfView = 30f;
                 return;
@@ -183,8 +183,8 @@ namespace MmdBlendShapeScaler
             float distance = objectRadius / Mathf.Tan(fov * 0.5f * Mathf.Deg2Rad);
             distance = Mathf.Max(distance, 0.3f);
 
-            // 相机置于角色正面（使用面部朝向），看向瞄准点
-            cam.transform.position = target - faceForward * distance;
+            // 相机置于角色正面（faceForward 指向面部外侧，故 += 将相机放在前方）
+            cam.transform.position = target + faceForward * distance;
             cam.transform.LookAt(target);
         }
 
