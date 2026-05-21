@@ -149,38 +149,97 @@ namespace MmdBlendShapeScaler
 
         /// <summary>
         /// 将相机对准 renderer 包围盒正面中心，确保缩略图角度一致。
-        /// 沿 renderer.transform.forward 方向取景，用 25° FOV 做面部特写。
+        /// 优先使用 Head bone 的朝向（面部实际朝向），回退到 renderer.transform.forward。
         /// </summary>
         private static void FrameRendererInCamera(Camera cam, SkinnedMeshRenderer renderer)
         {
-            Bounds bounds = renderer.bounds;
+            // Use face-level bounds instead of full-body renderer bounds
+            Bounds bounds = GetFaceBounds(renderer);
+            Vector3 faceForward = GetFaceForward(renderer);
 
             // 若包围盒异常（零或 NaN），保守回退
             float extentMag = bounds.extents.magnitude;
             if (extentMag < 0.001f || float.IsNaN(extentMag))
             {
-                cam.transform.position = renderer.transform.position - renderer.transform.forward * 1f;
-                cam.transform.LookAt(renderer.transform.position);
+                cam.transform.position = bounds.center - faceForward * 1f;
+                cam.transform.LookAt(bounds.center);
                 cam.fieldOfView = 30f;
                 return;
             }
 
             // 瞄准点：包围盒中心略偏上（人脸通常在网格上半部）
-            Vector3 target = bounds.center + Vector3.up * bounds.extents.y * 0.25f;
+            // 使用 head bone 的本地 up 方向，避免角色倾斜时偏移方向错误
+            Transform headBone = FindHeadBone(renderer);
+            Vector3 upDir = headBone != null ? headBone.up : renderer.transform.up;
+            Vector3 target = bounds.center + upDir * bounds.extents.y * 0.25f;
 
             // 25° FOV 面部特写，透视投影
             float fov = 25f;
             cam.fieldOfView = fov;
             cam.orthographic = false;
 
-            // 计算距离：让包围球体在 1.5x 留白下刚好装入画面
-            float objectRadius = extentMag * 1.5f;
+            // 计算距离：让包围球体在 1.2x 留白下刚好装入画面
+            float objectRadius = extentMag * 1.2f;
             float distance = objectRadius / Mathf.Tan(fov * 0.5f * Mathf.Deg2Rad);
             distance = Mathf.Max(distance, 0.3f);
 
-            // 相机置于角色正面，看向瞄准点
-            cam.transform.position = target - renderer.transform.forward * distance;
+            // 相机置于角色正面（使用面部朝向），看向瞄准点
+            cam.transform.position = target - faceForward * distance;
             cam.transform.LookAt(target);
+        }
+
+        /// <summary>
+        /// 返回面部级别的包围盒。
+        /// 优先通过头骨（Head bone）估算面部区域；
+        /// 回退到整个 renderer 的包围盒（即全身）。
+        /// </summary>
+        private static Bounds GetFaceBounds(SkinnedMeshRenderer renderer)
+        {
+            Transform headBone = FindHeadBone(renderer);
+            if (headBone != null)
+            {
+                Vector3 faceForward = GetFaceForward(renderer);
+
+                // Unity Humanoid 的 Head bone 在脖子根部，面部在其上方/前方。
+                // 从 head bone 位置偏移估算面部中心。
+                Vector3 faceCenter = headBone.position
+                                     + headBone.up * 0.12f     // 向上到眼睛高度
+                                     + faceForward * 0.08f;     // 向前到面部（使用修正后的朝向）
+
+                // 30cm 边长包围盒覆盖大部分人类/动漫头型
+                return new Bounds(faceCenter, Vector3.one * 0.30f);
+            }
+
+            return renderer.bounds;
+        }
+
+        private static Transform FindHeadBone(SkinnedMeshRenderer renderer)
+        {
+            if (renderer.bones == null) return null;
+            foreach (var bone in renderer.bones)
+            {
+                if (bone != null && bone.name.IndexOf("head", System.StringComparison.OrdinalIgnoreCase) >= 0)
+                    return bone;
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// 返回面部朝向。
+        /// 优先使用 Head bone 的 forward（面的实际朝向），
+        /// 回退到 renderer.transform.forward。
+        /// </summary>
+        private static Vector3 GetFaceForward(SkinnedMeshRenderer renderer)
+        {
+            Transform headBone = FindHeadBone(renderer);
+            if (headBone != null)
+            {
+                // headBone.forward 在部分 MMD 模型上指向头部内部(Z轴朝后)而非面部前方
+                // 此时应与角色大致朝向 (renderer.transform.forward) 做点积判断
+                float dot = Vector3.Dot(headBone.forward, renderer.transform.forward);
+                return dot >= 0f ? headBone.forward : -headBone.forward;
+            }
+            return renderer.transform.forward;
         }
     }
 }
