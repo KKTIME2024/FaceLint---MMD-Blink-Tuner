@@ -57,6 +57,7 @@ namespace MmdBlendShapeScaler
 
         /// <summary>
         /// 渲染单个 BlendShape 在指定权重下的缩略图。
+        /// 自动将相机对准 renderer 包围盒正面中心，确保缩略图一致。
         /// 调用者负责用 DestroyImmediate 释放返回的 Texture2D。
         /// </summary>
         public static Texture2D Render(
@@ -68,25 +69,30 @@ namespace MmdBlendShapeScaler
             if (renderer == null || renderer.sharedMesh == null) return null;
             if (blendshapeIndex < 0 || blendshapeIndex >= renderer.sharedMesh.blendShapeCount) return null;
 
-            var sceneView = SceneView.lastActiveSceneView;
-            if (sceneView == null || sceneView.camera == null) return null;
-
-            var sceneCam = sceneView.camera;
             var blendShapeName = renderer.sharedMesh.GetBlendShapeName(blendshapeIndex);
 
             // ── 创建临时相机 ──
             var camGo = new GameObject("__MMD_BS_Preview_Cam__");
             camGo.hideFlags = HideFlags.HideAndDontSave;
             var cam = camGo.AddComponent<Camera>();
-            cam.transform.position = sceneCam.transform.position;
-            cam.transform.rotation = sceneCam.transform.rotation;
-            cam.fieldOfView = sceneCam.fieldOfView;
-            cam.orthographic = sceneCam.orthographic;
-            cam.nearClipPlane = sceneCam.nearClipPlane;
-            cam.farClipPlane = sceneCam.farClipPlane;
-            cam.orthographicSize = sceneCam.orthographicSize;
-            cam.clearFlags = sceneCam.clearFlags;
-            cam.backgroundColor = sceneCam.backgroundColor;
+
+            // 用 Scene View 的背景色，但独立定位
+            var sceneView = SceneView.lastActiveSceneView;
+            if (sceneView != null)
+            {
+                cam.clearFlags = sceneView.camera.clearFlags;
+                cam.backgroundColor = sceneView.camera.backgroundColor;
+            }
+            else
+            {
+                cam.clearFlags = CameraClearFlags.SolidColor;
+                cam.backgroundColor = new Color(0.25f, 0.25f, 0.25f, 1f);
+            }
+            cam.nearClipPlane = 0.01f;
+            cam.farClipPlane = 100f;
+
+            // 根据 renderer 包围盒定位相机，保证人脸居中
+            FrameRendererInCamera(cam, renderer);
 
             // ── 创建 AnimationClip ──
             var clip = new AnimationClip();
@@ -139,6 +145,42 @@ namespace MmdBlendShapeScaler
             }
 
             return result;
+        }
+
+        /// <summary>
+        /// 将相机对准 renderer 包围盒正面中心，确保缩略图角度一致。
+        /// 沿 renderer.transform.forward 方向取景，用 25° FOV 做面部特写。
+        /// </summary>
+        private static void FrameRendererInCamera(Camera cam, SkinnedMeshRenderer renderer)
+        {
+            Bounds bounds = renderer.bounds;
+
+            // 若包围盒异常（零或 NaN），保守回退
+            float extentMag = bounds.extents.magnitude;
+            if (extentMag < 0.001f || float.IsNaN(extentMag))
+            {
+                cam.transform.position = renderer.transform.position - renderer.transform.forward * 1f;
+                cam.transform.LookAt(renderer.transform.position);
+                cam.fieldOfView = 30f;
+                return;
+            }
+
+            // 瞄准点：包围盒中心略偏上（人脸通常在网格上半部）
+            Vector3 target = bounds.center + Vector3.up * bounds.extents.y * 0.25f;
+
+            // 25° FOV 面部特写，透视投影
+            float fov = 25f;
+            cam.fieldOfView = fov;
+            cam.orthographic = false;
+
+            // 计算距离：让包围球体在 1.5x 留白下刚好装入画面
+            float objectRadius = extentMag * 1.5f;
+            float distance = objectRadius / Mathf.Tan(fov * 0.5f * Mathf.Deg2Rad);
+            distance = Mathf.Max(distance, 0.3f);
+
+            // 相机置于角色正面，看向瞄准点
+            cam.transform.position = target - renderer.transform.forward * distance;
+            cam.transform.LookAt(target);
         }
     }
 }
