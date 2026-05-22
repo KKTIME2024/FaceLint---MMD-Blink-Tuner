@@ -31,7 +31,7 @@ namespace MmdBlendShapeScaler
 
         // ── View options ──
         private int _thumbnailSize = 150;
-        private float _zoomLevel = 1.0f;
+        private float _zoomLevel = 2.0f;
         private static List<float> _recentValues = new List<float>();  // sorted ascending, deduped
         private const int MaxRecentValues = 8;
 
