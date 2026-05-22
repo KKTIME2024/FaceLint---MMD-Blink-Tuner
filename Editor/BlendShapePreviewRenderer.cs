@@ -160,12 +160,10 @@ namespace MmdBlendShapeScaler
         /// </summary>
         private static void FrameRendererInCamera(Camera cam, SkinnedMeshRenderer renderer)
         {
-            // Use face-level bounds instead of full-body renderer bounds
             Bounds bounds = GetFaceBounds(renderer);
             Vector3 faceForward = GetFaceForward(renderer);
             Transform headBone = FindHeadBone(renderer);
 
-            // 若包围盒异常（零或 NaN），保守回退
             float extentMag = bounds.extents.magnitude;
             if (extentMag < 0.001f || float.IsNaN(extentMag))
             {
@@ -176,8 +174,8 @@ namespace MmdBlendShapeScaler
                 return;
             }
 
-            // 瞄准点：head bone 位置（与相机同高，面部自然出现在画面上半部）
-            Vector3 target = headBone != null ? headBone.position : bounds.center;
+            // 瞄准点 = 面部视觉中心（双眼中点 > head bone 比例偏移）
+            Vector3 target = bounds.center;
 
             // 25° FOV 面部特写，透视投影
             float fov = 25f;
@@ -189,49 +187,48 @@ namespace MmdBlendShapeScaler
             float distance = objectRadius / Mathf.Tan(fov * 0.5f * Mathf.Deg2Rad);
             distance = Mathf.Max(distance, 0.3f);
 
-            // 应用缩放倍率（>1 放大=相机更近）
             float zoom = Mathf.Max(ZoomMultiplier, 0.1f);
             distance /= zoom;
 
-            // 相机置于角色正面（faceForward 指向面部外侧，故 += 将相机放在前方）
+            // 相机置于面部正前方
             cam.transform.position = target + faceForward * distance;
             cam.transform.LookAt(target);
+
+            // 微俯视 2.5°：面部中心在画面上半部，留出脖颈空间
+            cam.transform.Rotate(Vector3.right, -2.5f, Space.Self);
         }
 
         /// <summary>
         /// 返回面部级别的包围盒。
-        /// 优先从蒙皮网格的顶点数据中提取 Head bone 权重 > 0.3 的顶点包围盒；
-        /// 回退到头骨位置偏移估算；
-        /// 最终回退到整个 renderer 的包围盒。
+        /// ① 面部骨骼蒙皮权重 > 0.3 的顶点包围盒（排除头发/耳朵骨架）；
+        /// ② 回退到头骨位置比例偏移；
+        /// ③ 最终回退到整个 renderer 包围盒。
+        /// 中心点由 GetFaceVisualCenter 提供（双眼中点 > head bone 比例偏移）。
         /// </summary>
         private static Bounds GetFaceBounds(SkinnedMeshRenderer renderer)
         {
             Transform headBone = FindHeadBone(renderer);
 
-            // 1) 从顶点位置提取头部区域的包围盒（仅取尺寸，中心用骨骼估算防偏心）
-            Bounds meshBounds = GetHeadBoneVertexBounds(renderer);
+            // 1) 面部骨骼权重过滤的顶点包围盒（过滤头发/耳朵）
+            Bounds meshBounds = GetFaceBoneWeightBounds(renderer);
             if (meshBounds.extents.magnitude > 0.001f)
             {
-                Vector3 faceForward = GetFaceForward(renderer);
-                Vector3 faceCenter = headBone.position
-                                     + headBone.up * 0.12f
-                                     + faceForward * 0.08f;
-
-                float faceWidth  = Mathf.Clamp(meshBounds.size.x, 0.10f, 0.35f);
-                float faceHeight = Mathf.Clamp(meshBounds.size.y, 0.12f, 0.40f);
-                float faceDepth  = Mathf.Clamp(meshBounds.size.z, 0.10f, 0.35f);
-
+                Vector3 faceCenter = GetFaceVisualCenter(renderer, meshBounds);
+                float faceWidth  = Mathf.Clamp(meshBounds.size.x, 0.10f, 0.40f);
+                float faceHeight = Mathf.Clamp(meshBounds.size.y, 0.12f, 0.45f);
+                float faceDepth  = Mathf.Clamp(meshBounds.size.z, 0.08f, 0.35f);
                 return new Bounds(faceCenter, new Vector3(faceWidth, faceHeight, faceDepth));
             }
 
-            // 2) 头骨位置偏移估算（回退）
+            // 2) 头骨 + 比例偏移（回退）
             if (headBone != null)
             {
                 Vector3 faceForward = GetFaceForward(renderer);
+                float estimatedFaceHeight = 0.30f;
                 Vector3 faceCenter = headBone.position
-                                     + headBone.up * 0.12f
+                                     + headBone.up * (estimatedFaceHeight * 0.40f)
                                      + faceForward * 0.08f;
-                return new Bounds(faceCenter, Vector3.one * 0.30f);
+                return new Bounds(faceCenter, Vector3.one * estimatedFaceHeight);
             }
 
             // 3) 全身包围盒
@@ -239,35 +236,72 @@ namespace MmdBlendShapeScaler
         }
 
         /// <summary>
-        /// 以头骨在 mesh 本地空间的位置为中心，收集半径 30cm 内的所有顶点，
-        /// 返回其世界空间包围盒。不依赖蒙皮权重，避免权重异常时取到全身顶点。
-        /// 若包围盒任一维度超过 0.5m（覆盖全身），视为无效，回退到硬编码估算。
+        /// 返回视觉面部中心。
+        /// 最优：双眼骨骼中点，下移面高 10%；
+        /// 次优：head bone + 面高比例偏移。
         /// </summary>
-        private static Bounds GetHeadBoneVertexBounds(SkinnedMeshRenderer renderer)
+        private static Vector3 GetFaceVisualCenter(SkinnedMeshRenderer renderer, Bounds faceBounds)
+        {
+            Transform headBone = FindHeadBone(renderer);
+            if (headBone == null) return faceBounds.center;
+
+            // Best: midpoint of left + right eye bones, offset slightly down
+            FindEyeBones(renderer, out Transform leftEye, out Transform rightEye);
+            if (leftEye != null && rightEye != null)
+            {
+                Vector3 eyeMidpoint = (leftEye.position + rightEye.position) * 0.5f;
+                float downOffset = faceBounds.size.y * 0.10f;
+                return eyeMidpoint - headBone.up * downOffset;
+            }
+
+            // Fallback: head bone + proportional offset based on face bounds height
+            Vector3 faceForward = GetFaceForward(renderer);
+            return headBone.position + headBone.up * (faceBounds.size.y * 0.40f) + faceForward * 0.08f;
+        }
+
+        /// <summary>
+        /// 收集主要受面部骨骼（head/eye/jaw/nose/lip/brow/face）蒙皮的顶点，
+        /// 排除受 hair/ear/accessory 骨骼主导的顶点。返回世界空间包围盒。
+        /// </summary>
+        private static Bounds GetFaceBoneWeightBounds(SkinnedMeshRenderer renderer)
         {
             Mesh sharedMesh = renderer.sharedMesh;
-            if (sharedMesh == null) return default;
+            if (sharedMesh == null || !sharedMesh.isReadable) return default;
 
-            if (!sharedMesh.isReadable) return default;
-
+            BoneWeight[] boneWeights = sharedMesh.boneWeights;
             Vector3[] meshVertices = sharedMesh.vertices;
-            if (meshVertices == null || meshVertices.Length == 0) return default;
+            if (boneWeights == null || boneWeights.Length == 0) return default;
+            if (meshVertices == null || boneWeights.Length != meshVertices.Length) return default;
 
-            Transform headBone = FindHeadBone(renderer);
-            if (headBone == null) return default;
+            Transform[] bones = renderer.bones;
+            if (bones == null) return default;
 
-            // 头骨在 mesh 本地空间中的位置
-            Vector3 headBoneLocalPos = renderer.transform.InverseTransformPoint(headBone.position);
+            // Build set of face bone indices (excludes hair, ears, accessories)
+            HashSet<int> faceBoneIndices = new HashSet<int>();
+            for (int i = 0; i < bones.Length; i++)
+            {
+                if (bones[i] != null && IsFaceBone(bones[i].name))
+                    faceBoneIndices.Add(i);
+            }
+            if (faceBoneIndices.Count == 0) return default;
 
             Matrix4x4 localToWorld = renderer.transform.localToWorldMatrix;
-
-            const float searchRadius = 0.30f;      // 30cm 覆盖头部
-            const float maxFaceSize = 0.50f;       // 超过此值视为异常（取到了身躯）
-
             List<Vector3> worldVerts = new List<Vector3>();
-            for (int i = 0; i < meshVertices.Length; i++)
+
+            for (int i = 0; i < boneWeights.Length; i++)
             {
-                if (Vector3.Distance(meshVertices[i], headBoneLocalPos) < searchRadius)
+                BoneWeight bw = boneWeights[i];
+
+                // Find primary bone (highest weight)
+                int bestBone = -1;
+                float bestWeight = 0f;
+                CheckBoneWeight(bw.boneIndex0, bw.weight0, ref bestBone, ref bestWeight);
+                CheckBoneWeight(bw.boneIndex1, bw.weight1, ref bestBone, ref bestWeight);
+                CheckBoneWeight(bw.boneIndex2, bw.weight2, ref bestBone, ref bestWeight);
+                CheckBoneWeight(bw.boneIndex3, bw.weight3, ref bestBone, ref bestWeight);
+
+                // Include if primary bone is a face bone and weight is significant
+                if (bestBone >= 0 && faceBoneIndices.Contains(bestBone) && bestWeight > 0.3f)
                     worldVerts.Add(localToWorld.MultiplyPoint3x4(meshVertices[i]));
             }
 
@@ -277,11 +311,63 @@ namespace MmdBlendShapeScaler
             foreach (var v in worldVerts)
                 bounds.Encapsulate(v);
 
-            // 包围盒过大约等于取到了全身 → 回退
+            const float maxFaceSize = 0.60f;
             if (bounds.size.x > maxFaceSize || bounds.size.y > maxFaceSize || bounds.size.z > maxFaceSize)
                 return default;
 
             return bounds;
+        }
+
+        private static void CheckBoneWeight(int boneIndex, float weight, ref int bestBone, ref float bestWeight)
+        {
+            if (weight > bestWeight) { bestBone = boneIndex; bestWeight = weight; }
+        }
+
+        private static bool IsFaceBone(string boneName)
+        {
+            if (string.IsNullOrEmpty(boneName)) return false;
+            string lower = boneName.ToLowerInvariant();
+
+            // Exclude non-face bones
+            if (lower.Contains("hair") || lower.Contains("kami") ||
+                lower.Contains("ear") || lower.Contains("mimi") ||
+                lower.Contains("hat") || lower.Contains("ribbon") ||
+                lower.Contains("accessory") || lower.Contains("ahoge") ||
+                lower.Contains("tail") || lower.Contains("ponytail"))
+                return false;
+
+            // Include face bones
+            return lower.Contains("head") ||
+                   lower.Contains("eye") ||
+                   lower.Contains("jaw") || lower.Contains("chin") ||
+                   lower.Contains("nose") ||
+                   lower.Contains("lip") || lower.Contains("mouth") ||
+                   lower.Contains("brow") || lower.Contains("eyelid") ||
+                   lower.Contains("face") || lower.Contains("cheek") ||
+                   lower.Contains("tongue");
+        }
+
+        private static void FindEyeBones(SkinnedMeshRenderer renderer, out Transform leftEye, out Transform rightEye)
+        {
+            leftEye = null;
+            rightEye = null;
+            if (renderer.bones == null) return;
+
+            foreach (var bone in renderer.bones)
+            {
+                if (bone == null) continue;
+                string lower = bone.name.ToLowerInvariant();
+                if (!lower.Contains("eye")) continue;
+
+                if (lower.Contains("left") || lower.EndsWith("_l") || lower.EndsWith(".l") || lower.Contains("_l_"))
+                    leftEye = bone;
+                else if (lower.Contains("right") || lower.EndsWith("_r") || lower.EndsWith(".r") || lower.Contains("_r_"))
+                    rightEye = bone;
+                else if (leftEye == null)
+                    leftEye = bone;
+                else if (rightEye == null)
+                    rightEye = bone;
+            }
         }
 
         private static Transform FindHeadBone(SkinnedMeshRenderer renderer)
