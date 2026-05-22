@@ -606,11 +606,9 @@ namespace MmdBlendShapeScaler
             // Ensure all weights are zero before rendering thumbnails
             RestoreAllWeights();
 
-            // Warm up AnimationMode pipeline — the first BeginSampling→Sample→EndSampling
-            // cycle lazily initializes and doesn't flush to mesh, causing first thumbnail
-            // to render at weight=0. A full dummy cycle on the actual renderer fixes this.
+            // Start a fresh render batch — face bounds / camera are cached inside Render()
             BlendShapePreviewRenderer.ZoomMultiplier = _zoomLevel;
-            BlendShapePreviewRenderer.WarmupAnimationMode(_faceRenderer);
+            BlendShapePreviewRenderer.ClearCache();
 
             // Generate thumbnails
             try
