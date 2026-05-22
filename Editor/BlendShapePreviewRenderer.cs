@@ -228,8 +228,9 @@ namespace MmdBlendShapeScaler
         }
 
         /// <summary>
-        /// 找到 Head bone 在骨骼数组中的索引，收集所有权重 > 0.3 的顶点，
-        /// 返回其世界空间包围盒。
+        /// 以头骨在 mesh 本地空间的位置为中心，收集半径 30cm 内的所有顶点，
+        /// 返回其世界空间包围盒。不依赖蒙皮权重，避免权重异常时取到全身顶点。
+        /// 若包围盒任一维度超过 0.5m（覆盖全身），视为无效，回退到硬编码估算。
         /// </summary>
         private static Bounds GetHeadBoneVertexBounds(SkinnedMeshRenderer renderer)
         {
@@ -238,48 +239,36 @@ namespace MmdBlendShapeScaler
 
             if (!sharedMesh.isReadable) return default;
 
-            BoneWeight[] boneWeights = sharedMesh.boneWeights;
             Vector3[] meshVertices = sharedMesh.vertices;
-            if (boneWeights == null || boneWeights.Length == 0) return default;
             if (meshVertices == null || meshVertices.Length == 0) return default;
-            if (boneWeights.Length != meshVertices.Length) return default;
 
             Transform headBone = FindHeadBone(renderer);
             if (headBone == null) return default;
 
-            Transform[] bones = renderer.bones;
-            int headBoneIndex = -1;
-            for (int i = 0; i < bones.Length; i++)
-            {
-                if (bones[i] == headBone)
-                {
-                    headBoneIndex = i;
-                    break;
-                }
-            }
-            if (headBoneIndex < 0) return default;
+            // 头骨在 mesh 本地空间中的位置
+            Vector3 headBoneLocalPos = renderer.transform.InverseTransformPoint(headBone.position);
 
             Matrix4x4 localToWorld = renderer.transform.localToWorldMatrix;
 
-            List<Vector3> worldVerts = new List<Vector3>();
-            for (int i = 0; i < boneWeights.Length; i++)
-            {
-                BoneWeight bw = boneWeights[i];
-                float headWeight = 0f;
-                if (bw.boneIndex0 == headBoneIndex) headWeight = bw.weight0;
-                else if (bw.boneIndex1 == headBoneIndex) headWeight = bw.weight1;
-                else if (bw.boneIndex2 == headBoneIndex) headWeight = bw.weight2;
-                else if (bw.boneIndex3 == headBoneIndex) headWeight = bw.weight3;
+            const float searchRadius = 0.30f;      // 30cm 覆盖头部
+            const float maxFaceSize = 0.50f;       // 超过此值视为异常（取到了身躯）
 
-                if (headWeight > 0.3f)
+            List<Vector3> worldVerts = new List<Vector3>();
+            for (int i = 0; i < meshVertices.Length; i++)
+            {
+                if (Vector3.Distance(meshVertices[i], headBoneLocalPos) < searchRadius)
                     worldVerts.Add(localToWorld.MultiplyPoint3x4(meshVertices[i]));
             }
 
-            if (worldVerts.Count == 0) return default;
+            if (worldVerts.Count < 3) return default;
 
             Bounds bounds = new Bounds(worldVerts[0], Vector3.zero);
             foreach (var v in worldVerts)
                 bounds.Encapsulate(v);
+
+            // 包围盒过大约等于取到了全身 → 回退
+            if (bounds.size.x > maxFaceSize || bounds.size.y > maxFaceSize || bounds.size.z > maxFaceSize)
+                return default;
 
             return bounds;
         }
