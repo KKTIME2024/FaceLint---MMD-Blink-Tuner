@@ -207,13 +207,25 @@ namespace MmdBlendShapeScaler
         /// </summary>
         private static Bounds GetFaceBounds(SkinnedMeshRenderer renderer)
         {
-            // 1) 从蒙皮权重提取头骨关联顶点的包围盒
+            Transform headBone = FindHeadBone(renderer);
+
+            // 1) 从顶点位置提取头部区域的包围盒（仅取尺寸，中心用骨骼估算防偏心）
             Bounds meshBounds = GetHeadBoneVertexBounds(renderer);
             if (meshBounds.extents.magnitude > 0.001f)
-                return meshBounds;
+            {
+                Vector3 faceForward = GetFaceForward(renderer);
+                Vector3 faceCenter = headBone.position
+                                     + headBone.up * 0.12f
+                                     + faceForward * 0.08f;
 
-            // 2) 头骨位置偏移估算
-            Transform headBone = FindHeadBone(renderer);
+                float faceWidth  = Mathf.Clamp(meshBounds.size.x, 0.10f, 0.35f);
+                float faceHeight = Mathf.Clamp(meshBounds.size.y, 0.12f, 0.40f);
+                float faceDepth  = Mathf.Clamp(meshBounds.size.z, 0.10f, 0.35f);
+
+                return new Bounds(faceCenter, new Vector3(faceWidth, faceHeight, faceDepth));
+            }
+
+            // 2) 头骨位置偏移估算（回退）
             if (headBone != null)
             {
                 Vector3 faceForward = GetFaceForward(renderer);
