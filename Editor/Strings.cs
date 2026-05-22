@@ -70,6 +70,7 @@ namespace MmdBlendShapeScaler
         public string SummaryModifiedFmt;    // "{0} MMD shapes | Modified: {1}"
         public string SummaryDirtyFmt;       // " | Unconfirmed: {0}"
         public string ThumbnailSize;
+        public string ZoomLevel;
         public string Eyes;
         public string Mouth;
         public string Eyebrows;
@@ -135,6 +136,7 @@ namespace MmdBlendShapeScaler
             SummaryModifiedFmt = "{0} MMD shapes | Modified: {1}",
             SummaryDirtyFmt    = " | Unconfirmed: {0}",
             ThumbnailSize      = "Thumbnail Size",
+            ZoomLevel          = "Zoom Level",
             Eyes               = "Eyes",
             Mouth              = "Mouth",
             Eyebrows           = "Eyebrows",
@@ -194,6 +196,7 @@ namespace MmdBlendShapeScaler
             SummaryModifiedFmt = "{0} 个 MMD 形态键 | 已修改: {1}",
             SummaryDirtyFmt    = " | 未确认: {0}",
             ThumbnailSize      = "缩略图大小",
+            ZoomLevel          = "缩放倍率",
             Eyes               = "眼部",
             Mouth              = "嘴部",
             Eyebrows           = "眉毛",
@@ -253,6 +256,7 @@ namespace MmdBlendShapeScaler
             SummaryModifiedFmt = "{0} 個のMMDシェイプ | 変更: {1}",
             SummaryDirtyFmt    = " | 未確認: {0}",
             ThumbnailSize      = "サムネイルサイズ",
+            ZoomLevel          = "拡大率",
             Eyes               = "目",
             Mouth              = "口",
             Eyebrows           = "眉",

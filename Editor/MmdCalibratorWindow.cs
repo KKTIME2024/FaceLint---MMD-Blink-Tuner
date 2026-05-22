@@ -31,6 +31,7 @@ namespace MmdBlendShapeScaler
 
         // ── View options ──
         private int _thumbnailSize = 150;
+        private float _zoomLevel = 1.0f;
         private static List<float> _recentValues = new List<float>();  // sorted ascending, deduped
         private const int MaxRecentValues = 8;
 
@@ -203,6 +204,9 @@ namespace MmdBlendShapeScaler
             // ── View options ──
             EditorGUILayout.BeginHorizontal();
             _thumbnailSize = EditorGUILayout.IntSlider(S.ThumbnailSize, _thumbnailSize, 100, 150);
+            EditorGUILayout.EndHorizontal();
+            EditorGUILayout.BeginHorizontal();
+            _zoomLevel = EditorGUILayout.Slider(S.ZoomLevel, _zoomLevel, 0.3f, 3.0f);
             EditorGUILayout.EndHorizontal();
 
             EditorGUILayout.Space(4);
@@ -592,6 +596,7 @@ namespace MmdBlendShapeScaler
             // Warm up AnimationMode pipeline — the first BeginSampling→Sample→EndSampling
             // cycle lazily initializes and doesn't flush to mesh, causing first thumbnail
             // to render at weight=0. A full dummy cycle on the actual renderer fixes this.
+            BlendShapePreviewRenderer.ZoomMultiplier = _zoomLevel;
             BlendShapePreviewRenderer.WarmupAnimationMode(_faceRenderer);
 
             // Generate thumbnails

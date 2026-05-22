@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEditor;
 using UnityEngine;
 
@@ -10,6 +11,12 @@ namespace MmdBlendShapeScaler
     public static class BlendShapePreviewRenderer
     {
         private static bool _warmedUp;
+
+        /// <summary>
+        /// 缩放倍率：>1 放大（相机更近），<1 缩小（相机更远）。
+        /// 绘制缩略图前设置，例如 2.0 表示面在画面中占 2 倍大。
+        /// </summary>
+        public static float ZoomMultiplier { get; set; } = 1.0f;
 
         /// <summary>
         /// 预热 AnimationMode 完整管线。
@@ -183,6 +190,10 @@ namespace MmdBlendShapeScaler
             float distance = objectRadius / Mathf.Tan(fov * 0.5f * Mathf.Deg2Rad);
             distance = Mathf.Max(distance, 0.3f);
 
+            // 应用缩放倍率（>1 放大=相机更近）
+            float zoom = Mathf.Max(ZoomMultiplier, 0.1f);
+            distance /= zoom;
+
             // 相机置于角色正面（faceForward 指向面部外侧，故 += 将相机放在前方）
             cam.transform.position = target + faceForward * distance;
             cam.transform.LookAt(target);
@@ -190,27 +201,87 @@ namespace MmdBlendShapeScaler
 
         /// <summary>
         /// 返回面部级别的包围盒。
-        /// 优先通过头骨（Head bone）估算面部区域；
-        /// 回退到整个 renderer 的包围盒（即全身）。
+        /// 优先从蒙皮网格的顶点数据中提取 Head bone 权重 > 0.3 的顶点包围盒；
+        /// 回退到头骨位置偏移估算；
+        /// 最终回退到整个 renderer 的包围盒。
         /// </summary>
         private static Bounds GetFaceBounds(SkinnedMeshRenderer renderer)
         {
+            // 1) 从蒙皮权重提取头骨关联顶点的包围盒
+            Bounds meshBounds = GetHeadBoneVertexBounds(renderer);
+            if (meshBounds.extents.magnitude > 0.001f)
+                return meshBounds;
+
+            // 2) 头骨位置偏移估算
             Transform headBone = FindHeadBone(renderer);
             if (headBone != null)
             {
                 Vector3 faceForward = GetFaceForward(renderer);
-
-                // Unity Humanoid 的 Head bone 在脖子根部，面部在其上方/前方。
-                // 从 head bone 位置偏移估算面部中心。
                 Vector3 faceCenter = headBone.position
-                                     + headBone.up * 0.12f     // 向上到眼睛高度
-                                     + faceForward * 0.08f;     // 向前到面部（使用修正后的朝向）
-
-                // 30cm 边长包围盒覆盖大部分人类/动漫头型
+                                     + headBone.up * 0.12f
+                                     + faceForward * 0.08f;
                 return new Bounds(faceCenter, Vector3.one * 0.30f);
             }
 
+            // 3) 全身包围盒
             return renderer.bounds;
+        }
+
+        /// <summary>
+        /// 找到 Head bone 在骨骼数组中的索引，收集所有权重 > 0.3 的顶点，
+        /// 返回其世界空间包围盒。
+        /// </summary>
+        private static Bounds GetHeadBoneVertexBounds(SkinnedMeshRenderer renderer)
+        {
+            Mesh sharedMesh = renderer.sharedMesh;
+            if (sharedMesh == null) return default;
+
+            if (!sharedMesh.isReadable) return default;
+
+            BoneWeight[] boneWeights = sharedMesh.boneWeights;
+            Vector3[] meshVertices = sharedMesh.vertices;
+            if (boneWeights == null || boneWeights.Length == 0) return default;
+            if (meshVertices == null || meshVertices.Length == 0) return default;
+            if (boneWeights.Length != meshVertices.Length) return default;
+
+            Transform headBone = FindHeadBone(renderer);
+            if (headBone == null) return default;
+
+            Transform[] bones = renderer.bones;
+            int headBoneIndex = -1;
+            for (int i = 0; i < bones.Length; i++)
+            {
+                if (bones[i] == headBone)
+                {
+                    headBoneIndex = i;
+                    break;
+                }
+            }
+            if (headBoneIndex < 0) return default;
+
+            Matrix4x4 localToWorld = renderer.transform.localToWorldMatrix;
+
+            List<Vector3> worldVerts = new List<Vector3>();
+            for (int i = 0; i < boneWeights.Length; i++)
+            {
+                BoneWeight bw = boneWeights[i];
+                float headWeight = 0f;
+                if (bw.boneIndex0 == headBoneIndex) headWeight = bw.weight0;
+                else if (bw.boneIndex1 == headBoneIndex) headWeight = bw.weight1;
+                else if (bw.boneIndex2 == headBoneIndex) headWeight = bw.weight2;
+                else if (bw.boneIndex3 == headBoneIndex) headWeight = bw.weight3;
+
+                if (headWeight > 0.3f)
+                    worldVerts.Add(localToWorld.MultiplyPoint3x4(meshVertices[i]));
+            }
+
+            if (worldVerts.Count == 0) return default;
+
+            Bounds bounds = new Bounds(worldVerts[0], Vector3.zero);
+            foreach (var v in worldVerts)
+                bounds.Encapsulate(v);
+
+            return bounds;
         }
 
         private static Transform FindHeadBone(SkinnedMeshRenderer renderer)
