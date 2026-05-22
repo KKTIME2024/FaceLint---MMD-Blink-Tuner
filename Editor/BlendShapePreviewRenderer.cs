@@ -158,7 +158,7 @@ namespace MmdBlendShapeScaler
         /// 将相机对准 renderer 包围盒正面中心，确保缩略图角度一致。
         /// 优先使用 Head bone 的朝向（面部实际朝向），回退到 renderer.transform.forward。
         /// </summary>
-        private static void FrameRendererInCamera(Camera cam, SkinnedMeshRenderer renderer)
+        internal static void FrameRendererInCamera(Camera cam, SkinnedMeshRenderer renderer)
         {
             Bounds bounds = GetFaceBounds(renderer);
             Vector3 faceForward = GetFaceForward(renderer);

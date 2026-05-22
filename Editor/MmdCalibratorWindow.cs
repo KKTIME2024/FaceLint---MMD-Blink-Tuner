@@ -453,6 +453,19 @@ namespace MmdBlendShapeScaler
 
             if (SceneView.lastActiveSceneView != null)
                 SceneView.lastActiveSceneView.Focus();
+
+            FrameSceneViewCamera();
+        }
+
+        private void FrameSceneViewCamera()
+        {
+            if (_faceRenderer == null) return;
+            var sceneView = SceneView.lastActiveSceneView;
+            if (sceneView == null) return;
+
+            var sceneCam = sceneView.camera;
+            BlendShapePreviewRenderer.FrameRendererInCamera(sceneCam, _faceRenderer);
+            sceneView.Repaint();
         }
 
         private void DeselectCurrent()
