@@ -5,8 +5,8 @@ using UnityEngine;
 namespace MmdBlendShapeScaler
 {
     /// <summary>
-    /// 使用临时 Camera + AnimationMode 将单个 BlendShape 渲染为 Texture2D。
-    /// 基于 blendshape-viewer (Hai~) 的方案简化。
+    /// 使用临时 Camera 将单个 BlendShape 渲染为 Texture2D。
+    /// 通过 SetBlendShapeWeight 直接设置权重，避开 AnimationMode 的懒初始化问题。
     /// </summary>
     public static class BlendShapePreviewRenderer
     {
@@ -17,8 +17,6 @@ namespace MmdBlendShapeScaler
         public static float ZoomMultiplier { get; set; } = 1.0f;
 
         // ── Batch 级别缓存 ──
-        // 在 Scan() 调用 ClearCache() 后，首次 Render() 会填充缓存，
-        // 后续同批次的 Render() 调用复用相机位置和面部包围盒计算。
         private static int _cachedRendererId;
         private static GameObject _cachedCameraGo;
         private static Camera _cachedCamera;
@@ -40,8 +38,8 @@ namespace MmdBlendShapeScaler
 
         /// <summary>
         /// 渲染单个 BlendShape 在指定权重下的缩略图。
-        /// 自动将相机对准 renderer 包围盒正面中心，确保缩略图一致。
-        /// 调用者负责用 DestroyImmediate 释放返回的 Texture2D。
+        /// 使用 renderer.SetBlendShapeWeight 直接设置权重，
+        /// 渲染完成后恢复为 0。调用者负责用 DestroyImmediate 释放返回的 Texture2D。
         /// </summary>
         public static Texture2D Render(
             SkinnedMeshRenderer renderer,
@@ -52,45 +50,17 @@ namespace MmdBlendShapeScaler
             if (renderer == null || renderer.sharedMesh == null) return null;
             if (blendshapeIndex < 0 || blendshapeIndex >= renderer.sharedMesh.blendShapeCount) return null;
 
-            var blendShapeName = renderer.sharedMesh.GetBlendShapeName(blendshapeIndex);
-
             // ── 获取/创建批次相机（面部包围盒+相机定位仅首次计算）──
             EnsureBatchResources(renderer);
             var cam = _cachedCamera;
 
-            // ── 创建 AnimationClip ──
-            var clip = new AnimationClip();
-            clip.hideFlags = HideFlags.HideAndDontSave;
-            AnimationUtility.SetEditorCurve(
-                clip,
-                new EditorCurveBinding
-                {
-                    path = "",
-                    type = typeof(SkinnedMeshRenderer),
-                    propertyName = $"blendShape.{blendShapeName}"
-                },
-                AnimationCurve.Constant(0, 1f / 60f, weight)
-            );
+            // ── 直接设置 blendshape 权重 ──
+            renderer.SetBlendShapeWeight(blendshapeIndex, weight);
 
             Texture2D result = null;
 
             try
             {
-                // ── 采样并渲染 ──
-                AnimationMode.StartAnimationMode();
-
-                // 在同一 AnimationMode 会话内执行两次采样：
-                // Unity 的 AnimationMode 存在延迟初始化问题 — StartAnimationMode 后的
-                // 第一个 BeginSampling→Sample→EndSampling 周期不会将动画状态同步到网格。
-                // 第二个采样周期才会正确应用。两个采样使用同一 Clip 同一时间，效果不变。
-                AnimationMode.BeginSampling();
-                AnimationMode.SampleAnimationClip(renderer.gameObject, clip, 1f / 60f);
-                AnimationMode.EndSampling();
-
-                AnimationMode.BeginSampling();
-                AnimationMode.SampleAnimationClip(renderer.gameObject, clip, 1f / 60f);
-                AnimationMode.EndSampling();
-
                 var rt = RenderTexture.GetTemporary(size, size, 24);
                 rt.wrapMode = TextureWrapMode.Clamp;
 
@@ -112,9 +82,7 @@ namespace MmdBlendShapeScaler
             }
             finally
             {
-                AnimationMode.StopAnimationMode();
-                Object.DestroyImmediate(clip);
-                // 注意：camera / camGo 不复存在，由 ClearCache() 统一清理
+                renderer.SetBlendShapeWeight(blendshapeIndex, 0f);
             }
 
             return result;
@@ -156,22 +124,18 @@ namespace MmdBlendShapeScaler
             Bounds bounds = GetFaceBounds(renderer);
 
             // 定位相机（基于面部包围盒，仅此一次）
-            FrameRendererInCamera(_cachedCamera, bounds, faceForward, headBone);
+            PositionCamera(_cachedCamera, bounds, faceForward, headBone);
         }
 
         /// <summary>
-        /// 将相机对准 renderer 包围盒正面中心，确保缩略图角度一致。
-        /// 优先使用 Head bone 的朝向（面部实际朝向），回退到 renderer.transform.forward。
+        /// 将相机对准 renderer 包围盒正面中心。供 FrameSceneViewCamera 使用。
         /// </summary>
         internal static void FrameRendererInCamera(Camera cam, SkinnedMeshRenderer renderer)
         {
-            FrameRendererInCamera(cam, GetFaceBounds(renderer), GetFaceForward(renderer), FindHeadBone(renderer));
+            PositionCamera(cam, GetFaceBounds(renderer), GetFaceForward(renderer), FindHeadBone(renderer));
         }
 
-        /// <summary>
-        /// 给定已计算好的包围盒 + 面部朝向 + 头骨，直接定位相机。
-        /// </summary>
-        private static void FrameRendererInCamera(Camera cam, Bounds bounds, Vector3 faceForward, Transform headBone)
+        private static void PositionCamera(Camera cam, Bounds bounds, Vector3 faceForward, Transform headBone)
         {
             float extentMag = bounds.extents.magnitude;
             if (extentMag < 0.001f || float.IsNaN(extentMag))
@@ -250,10 +214,6 @@ namespace MmdBlendShapeScaler
             return headBone.position + headBone.up * (faceBounds.size.y * 0.40f) + faceForward * 0.08f;
         }
 
-        /// <summary>
-        /// 收集主要受面部骨骼（head/eye/jaw/nose/lip/brow/face）蒙皮的顶点，
-        /// 排除受 hair/ear/accessory 骨骼主导的顶点。返回世界空间包围盒。
-        /// </summary>
         private static Bounds GetFaceBoneWeightBounds(SkinnedMeshRenderer renderer)
         {
             Mesh sharedMesh = renderer.sharedMesh;
