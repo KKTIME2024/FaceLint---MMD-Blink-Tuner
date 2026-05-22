@@ -5,28 +5,25 @@ using UnityEngine;
 namespace MmdBlendShapeScaler
 {
     /// <summary>
-    /// 使用临时 Camera 将单个 BlendShape 渲染为 Texture2D。
-    /// 通过 SetBlendShapeWeight 直接设置权重，避开 AnimationMode 的懒初始化问题。
+    /// 使用临时 Camera + AnimationMode 将单个 BlendShape 渲染为 Texture2D。
+    /// AnimationMode 在批次内保持一次 Start→...→Stop，避免跨会话的懒初始化影响首个缩略图。
     /// </summary>
     public static class BlendShapePreviewRenderer
     {
-        /// <summary>
-        /// 缩放倍率：>1 放大（相机更近），<1 缩小（相机更远）。
-        /// 绘制缩略图前设置，例如 2.0 表示面在画面中占 2 倍大。
-        /// </summary>
         public static float ZoomMultiplier { get; set; } = 1.0f;
 
         // ── Batch 级别缓存 ──
         private static int _cachedRendererId;
         private static GameObject _cachedCameraGo;
         private static Camera _cachedCamera;
+        private static bool _batchActive;
 
         /// <summary>
         /// 清空批次缓存。每次 Scan 前由外部调用一次。
-        /// （FaceBounds 中的全顶点遍历 + Camera 创建仅执行一次，而非每缩略图一次）
         /// </summary>
         public static void ClearCache()
         {
+            EndBatch();
             _cachedRendererId = 0;
             if (_cachedCameraGo != null)
             {
@@ -37,10 +34,18 @@ namespace MmdBlendShapeScaler
         }
 
         /// <summary>
-        /// 渲染单个 BlendShape 在指定权重下的缩略图。
-        /// 使用 renderer.SetBlendShapeWeight 直接设置权重，
-        /// 渲染完成后恢复为 0。调用者负责用 DestroyImmediate 释放返回的 Texture2D。
+        /// 结束当前 AnimationMode 批次（若仍在激活状态）。
+        /// 在 Scan() 的循环结束后调用。
         /// </summary>
+        public static void EndBatch()
+        {
+            if (_batchActive && AnimationMode.InAnimationMode())
+            {
+                AnimationMode.StopAnimationMode();
+            }
+            _batchActive = false;
+        }
+
         public static Texture2D Render(
             SkinnedMeshRenderer renderer,
             int blendshapeIndex,
@@ -50,17 +55,35 @@ namespace MmdBlendShapeScaler
             if (renderer == null || renderer.sharedMesh == null) return null;
             if (blendshapeIndex < 0 || blendshapeIndex >= renderer.sharedMesh.blendShapeCount) return null;
 
-            // ── 获取/创建批次相机（面部包围盒+相机定位仅首次计算）──
+            var blendShapeName = renderer.sharedMesh.GetBlendShapeName(blendshapeIndex);
+
             EnsureBatchResources(renderer);
             var cam = _cachedCamera;
 
-            // ── 直接设置 blendshape 权重 ──
-            renderer.SetBlendShapeWeight(blendshapeIndex, weight);
+            // ── 批次级 AnimationMode：首次 Render 启动并预热，后续复用 ──
+            EnsureAnimationModeBatch(renderer.gameObject);
+
+            var clip = new AnimationClip();
+            clip.hideFlags = HideFlags.HideAndDontSave;
+            AnimationUtility.SetEditorCurve(
+                clip,
+                new EditorCurveBinding
+                {
+                    path = "",
+                    type = typeof(SkinnedMeshRenderer),
+                    propertyName = $"blendShape.{blendShapeName}"
+                },
+                AnimationCurve.Constant(0, 1f / 60f, weight)
+            );
 
             Texture2D result = null;
 
             try
             {
+                AnimationMode.BeginSampling();
+                AnimationMode.SampleAnimationClip(renderer.gameObject, clip, 1f / 60f);
+                AnimationMode.EndSampling();
+
                 var rt = RenderTexture.GetTemporary(size, size, 24);
                 rt.wrapMode = TextureWrapMode.Clamp;
 
@@ -82,22 +105,64 @@ namespace MmdBlendShapeScaler
             }
             finally
             {
-                renderer.SetBlendShapeWeight(blendshapeIndex, 0f);
+                Object.DestroyImmediate(clip);
             }
 
             return result;
         }
 
         /// <summary>
+        /// 确保 AnimationMode 已启动且已预热。
+        /// 整个批次共享一次 StartAnimationMode，
+        /// 并在启动后立即用一次 dummy 采样吸收懒初始化。
+        /// 这样批次内首个缩略图的采样是本次会话的第 2 次采样，正确应用权重。
+        /// </summary>
+        private static void EnsureAnimationModeBatch(GameObject target)
+        {
+            if (_batchActive) return;
+
+            AnimationMode.StartAnimationMode();
+            _batchActive = true;
+
+            // 用空权重采样预热 — 首次采样不生效但会吸收懒初始化
+            var dummyClip = new AnimationClip();
+            dummyClip.hideFlags = HideFlags.HideAndDontSave;
+            // 使用一个真实存在的属性绑定来触发完整管道
+            var smr = target.GetComponent<SkinnedMeshRenderer>();
+            if (smr != null && smr.sharedMesh != null && smr.sharedMesh.blendShapeCount > 0)
+            {
+                var name = smr.sharedMesh.GetBlendShapeName(0);
+                AnimationUtility.SetEditorCurve(
+                    dummyClip,
+                    new EditorCurveBinding
+                    {
+                        path = "",
+                        type = typeof(SkinnedMeshRenderer),
+                        propertyName = $"blendShape.{name}"
+                    },
+                    AnimationCurve.Constant(0, 1f / 60f, 0f)
+                );
+                AnimationMode.BeginSampling();
+                AnimationMode.SampleAnimationClip(target, dummyClip, 1f / 60f);
+                AnimationMode.EndSampling();
+            }
+            Object.DestroyImmediate(dummyClip);
+        }
+
+        /// <summary>
         /// 初始化批次资源：创建 Camera + 计算面部包围盒 + 定位相机。
-        /// 同一 renderer 在同一批次中只会执行一次。
         /// </summary>
         private static void EnsureBatchResources(SkinnedMeshRenderer renderer)
         {
             int id = renderer.GetInstanceID();
             if (id == _cachedRendererId) return;
 
-            ClearCache();
+            if (_cachedCameraGo != null)
+            {
+                Object.DestroyImmediate(_cachedCameraGo);
+                _cachedCameraGo = null;
+                _cachedCamera = null;
+            }
             _cachedRendererId = id;
 
             _cachedCameraGo = new GameObject("__MMD_BS_Preview_Cam__");
@@ -118,18 +183,13 @@ namespace MmdBlendShapeScaler
             _cachedCamera.nearClipPlane = 0.01f;
             _cachedCamera.farClipPlane = 100f;
 
-            // 面部包围盒计算（全顶点遍历，仅此一次）
             Transform headBone = FindHeadBone(renderer);
             Vector3 faceForward = GetFaceForward(renderer);
             Bounds bounds = GetFaceBounds(renderer);
 
-            // 定位相机（基于面部包围盒，仅此一次）
             PositionCamera(_cachedCamera, bounds, faceForward, headBone);
         }
 
-        /// <summary>
-        /// 将相机对准 renderer 包围盒正面中心。供 FrameSceneViewCamera 使用。
-        /// </summary>
         internal static void FrameRendererInCamera(Camera cam, SkinnedMeshRenderer renderer)
         {
             PositionCamera(cam, GetFaceBounds(renderer), GetFaceForward(renderer), FindHeadBone(renderer));

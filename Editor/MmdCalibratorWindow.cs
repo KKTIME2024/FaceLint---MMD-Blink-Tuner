@@ -630,6 +630,7 @@ namespace MmdBlendShapeScaler
             }
             finally
             {
+                BlendShapePreviewRenderer.EndBatch();
                 EditorUtility.ClearProgressBar();
             }
 
