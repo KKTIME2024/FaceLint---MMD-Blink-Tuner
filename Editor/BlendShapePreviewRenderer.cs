@@ -163,22 +163,21 @@ namespace MmdBlendShapeScaler
             // Use face-level bounds instead of full-body renderer bounds
             Bounds bounds = GetFaceBounds(renderer);
             Vector3 faceForward = GetFaceForward(renderer);
+            Transform headBone = FindHeadBone(renderer);
 
             // 若包围盒异常（零或 NaN），保守回退
             float extentMag = bounds.extents.magnitude;
             if (extentMag < 0.001f || float.IsNaN(extentMag))
             {
-                cam.transform.position = bounds.center + faceForward * 1f;
-                cam.transform.LookAt(bounds.center);
+                Vector3 fallbackTarget = headBone != null ? headBone.position : bounds.center;
+                cam.transform.position = fallbackTarget + faceForward * 1f;
+                cam.transform.LookAt(fallbackTarget);
                 cam.fieldOfView = 30f;
                 return;
             }
 
-            // 瞄准点：包围盒中心略偏上（人脸通常在网格上半部）
-            // 使用 head bone 的本地 up 方向，避免角色倾斜时偏移方向错误
-            Transform headBone = FindHeadBone(renderer);
-            Vector3 upDir = headBone != null ? headBone.up : renderer.transform.up;
-            Vector3 target = bounds.center + upDir * bounds.extents.y * 0.25f;
+            // 瞄准点：head bone 位置（与相机同高，面部自然出现在画面上半部）
+            Vector3 target = headBone != null ? headBone.position : bounds.center;
 
             // 25° FOV 面部特写，透视投影
             float fov = 25f;
