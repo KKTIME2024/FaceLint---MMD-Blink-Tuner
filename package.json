@@ -1,7 +1,7 @@
 {
     "name": "vrc-avatar-mmd-blink-fixer",
     "displayName": "VRC Avatar MMD & Blink Fixer",
-    "version": "0.3.0",
+    "version": "0.4.0",
     "description": "VRChat MMDアバターの目と口の誇張を修正。NDMFでビルド時に非破壊適用。 | Fix over-closed eyes and exaggerated expressions on VRChat MMD avatars. | 修复VRChat MMD模型眼部过度闭合和表情夸张。",
     "unity": "2022.3",
     "author": {

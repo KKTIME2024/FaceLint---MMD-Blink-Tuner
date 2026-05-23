@@ -624,7 +624,7 @@ namespace MmdBlendShapeScaler
                     entry.thumbnail = BlendShapePreviewRenderer.Render(
                         _faceRenderer,
                         entry.meshIndex,
-                        100f,       // Always render at 100% for reference
+                        entry.sliderValue,  // Render at saved scale to reflect adjustments
                         _thumbnailSize);
                 }
             }
