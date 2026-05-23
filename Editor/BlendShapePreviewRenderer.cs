@@ -6,67 +6,46 @@ namespace MmdBlendShapeScaler
 {
     /// <summary>
     /// 使用临时 Camera + AnimationMode 将单个 BlendShape 渲染为 Texture2D。
-    /// 基于 blendshape-viewer (Hai~) 的方案简化。
+    /// AnimationMode 在批次内保持一次 Start→...→Stop，避免跨会话的懒初始化影响首个缩略图。
     /// </summary>
     public static class BlendShapePreviewRenderer
     {
-        private static bool _warmedUp;
-
-        /// <summary>
-        /// 缩放倍率：>1 放大（相机更近），<1 缩小（相机更远）。
-        /// 绘制缩略图前设置，例如 2.0 表示面在画面中占 2 倍大。
-        /// </summary>
         public static float ZoomMultiplier { get; set; } = 1.0f;
 
+        // ── Batch 级别缓存 ──
+        private static int _cachedRendererId;
+        private static GameObject _cachedCameraGo;
+        private static Camera _cachedCamera;
+        private static bool _batchActive;
+
         /// <summary>
-        /// 预热 AnimationMode 完整管线。
-        /// Unity 的 AnimationMode 在首次调用时存在延迟初始化问题：
-        /// BeginSampling → SampleAnimationClip → EndSampling 路径的第一个周期
-        /// 不会把动画状态同步到网格，导致第一个缩略图捕获到权重为 0 的画面。
-        /// 这里用一个包含真实 Clip + 完整采样周期的空操作来预热。
+        /// 清空批次缓存。每次 Scan 前由外部调用一次。
         /// </summary>
-        public static void WarmupAnimationMode(SkinnedMeshRenderer renderer)
+        public static void ClearCache()
         {
-            if (_warmedUp || renderer == null || renderer.sharedMesh == null) return;
-            _warmedUp = true;
-
-            var mesh = renderer.sharedMesh;
-            if (mesh.blendShapeCount == 0) return;
-
-            var clip = new AnimationClip();
-            clip.hideFlags = HideFlags.HideAndDontSave;
-
-            var firstBsName = mesh.GetBlendShapeName(0);
-            AnimationUtility.SetEditorCurve(
-                clip,
-                new EditorCurveBinding
-                {
-                    path = "",
-                    type = typeof(SkinnedMeshRenderer),
-                    propertyName = $"blendShape.{firstBsName}"
-                },
-                AnimationCurve.Constant(0, 1f / 60f, 0f)  // weight=0, no visual side effect
-            );
-
-            try
+            EndBatch();
+            _cachedRendererId = 0;
+            if (_cachedCameraGo != null)
             {
-                AnimationMode.StartAnimationMode();
-                AnimationMode.BeginSampling();
-                AnimationMode.SampleAnimationClip(renderer.gameObject, clip, 1f / 60f);
-                AnimationMode.EndSampling();
-            }
-            finally
-            {
-                AnimationMode.StopAnimationMode();
-                Object.DestroyImmediate(clip);
+                Object.DestroyImmediate(_cachedCameraGo);
+                _cachedCameraGo = null;
+                _cachedCamera = null;
             }
         }
 
         /// <summary>
-        /// 渲染单个 BlendShape 在指定权重下的缩略图。
-        /// 自动将相机对准 renderer 包围盒正面中心，确保缩略图一致。
-        /// 调用者负责用 DestroyImmediate 释放返回的 Texture2D。
+        /// 结束当前 AnimationMode 批次（若仍在激活状态）。
+        /// 在 Scan() 的循环结束后调用。
         /// </summary>
+        public static void EndBatch()
+        {
+            if (_batchActive && AnimationMode.InAnimationMode())
+            {
+                AnimationMode.StopAnimationMode();
+            }
+            _batchActive = false;
+        }
+
         public static Texture2D Render(
             SkinnedMeshRenderer renderer,
             int blendshapeIndex,
@@ -78,30 +57,12 @@ namespace MmdBlendShapeScaler
 
             var blendShapeName = renderer.sharedMesh.GetBlendShapeName(blendshapeIndex);
 
-            // ── 创建临时相机 ──
-            var camGo = new GameObject("__MMD_BS_Preview_Cam__");
-            camGo.hideFlags = HideFlags.HideAndDontSave;
-            var cam = camGo.AddComponent<Camera>();
+            EnsureBatchResources(renderer);
+            var cam = _cachedCamera;
 
-            // 用 Scene View 的背景色，但独立定位
-            var sceneView = SceneView.lastActiveSceneView;
-            if (sceneView != null)
-            {
-                cam.clearFlags = sceneView.camera.clearFlags;
-                cam.backgroundColor = sceneView.camera.backgroundColor;
-            }
-            else
-            {
-                cam.clearFlags = CameraClearFlags.SolidColor;
-                cam.backgroundColor = new Color(0.25f, 0.25f, 0.25f, 1f);
-            }
-            cam.nearClipPlane = 0.01f;
-            cam.farClipPlane = 100f;
+            // ── 批次级 AnimationMode：首次 Render 启动并预热，后续复用 ──
+            EnsureAnimationModeBatch(renderer.gameObject);
 
-            // 根据 renderer 包围盒定位相机，保证人脸居中
-            FrameRendererInCamera(cam, renderer);
-
-            // ── 创建 AnimationClip ──
             var clip = new AnimationClip();
             clip.hideFlags = HideFlags.HideAndDontSave;
             AnimationUtility.SetEditorCurve(
@@ -119,8 +80,6 @@ namespace MmdBlendShapeScaler
 
             try
             {
-                // ── 采样并渲染 ──
-                AnimationMode.StartAnimationMode();
                 AnimationMode.BeginSampling();
                 AnimationMode.SampleAnimationClip(renderer.gameObject, clip, 1f / 60f);
                 AnimationMode.EndSampling();
@@ -146,24 +105,98 @@ namespace MmdBlendShapeScaler
             }
             finally
             {
-                AnimationMode.StopAnimationMode();
                 Object.DestroyImmediate(clip);
-                Object.DestroyImmediate(camGo);
             }
 
             return result;
         }
 
         /// <summary>
-        /// 将相机对准 renderer 包围盒正面中心，确保缩略图角度一致。
-        /// 优先使用 Head bone 的朝向（面部实际朝向），回退到 renderer.transform.forward。
+        /// 确保 AnimationMode 已启动且已预热。
+        /// 整个批次共享一次 StartAnimationMode，
+        /// 并在启动后立即用一次 dummy 采样吸收懒初始化。
+        /// 这样批次内首个缩略图的采样是本次会话的第 2 次采样，正确应用权重。
         /// </summary>
-        private static void FrameRendererInCamera(Camera cam, SkinnedMeshRenderer renderer)
+        private static void EnsureAnimationModeBatch(GameObject target)
         {
-            Bounds bounds = GetFaceBounds(renderer);
-            Vector3 faceForward = GetFaceForward(renderer);
-            Transform headBone = FindHeadBone(renderer);
+            if (_batchActive) return;
 
+            AnimationMode.StartAnimationMode();
+            _batchActive = true;
+
+            // 用空权重采样预热 — 首次采样不生效但会吸收懒初始化
+            var dummyClip = new AnimationClip();
+            dummyClip.hideFlags = HideFlags.HideAndDontSave;
+            // 使用一个真实存在的属性绑定来触发完整管道
+            var smr = target.GetComponent<SkinnedMeshRenderer>();
+            if (smr != null && smr.sharedMesh != null && smr.sharedMesh.blendShapeCount > 0)
+            {
+                var name = smr.sharedMesh.GetBlendShapeName(0);
+                AnimationUtility.SetEditorCurve(
+                    dummyClip,
+                    new EditorCurveBinding
+                    {
+                        path = "",
+                        type = typeof(SkinnedMeshRenderer),
+                        propertyName = $"blendShape.{name}"
+                    },
+                    AnimationCurve.Constant(0, 1f / 60f, 0f)
+                );
+                AnimationMode.BeginSampling();
+                AnimationMode.SampleAnimationClip(target, dummyClip, 1f / 60f);
+                AnimationMode.EndSampling();
+            }
+            Object.DestroyImmediate(dummyClip);
+        }
+
+        /// <summary>
+        /// 初始化批次资源：创建 Camera + 计算面部包围盒 + 定位相机。
+        /// </summary>
+        private static void EnsureBatchResources(SkinnedMeshRenderer renderer)
+        {
+            int id = renderer.GetInstanceID();
+            if (id == _cachedRendererId) return;
+
+            if (_cachedCameraGo != null)
+            {
+                Object.DestroyImmediate(_cachedCameraGo);
+                _cachedCameraGo = null;
+                _cachedCamera = null;
+            }
+            _cachedRendererId = id;
+
+            _cachedCameraGo = new GameObject("__MMD_BS_Preview_Cam__");
+            _cachedCameraGo.hideFlags = HideFlags.HideAndDontSave;
+            _cachedCamera = _cachedCameraGo.AddComponent<Camera>();
+
+            var sceneView = SceneView.lastActiveSceneView;
+            if (sceneView != null)
+            {
+                _cachedCamera.clearFlags = sceneView.camera.clearFlags;
+                _cachedCamera.backgroundColor = sceneView.camera.backgroundColor;
+            }
+            else
+            {
+                _cachedCamera.clearFlags = CameraClearFlags.SolidColor;
+                _cachedCamera.backgroundColor = new Color(0.25f, 0.25f, 0.25f, 1f);
+            }
+            _cachedCamera.nearClipPlane = 0.01f;
+            _cachedCamera.farClipPlane = 100f;
+
+            Transform headBone = FindHeadBone(renderer);
+            Vector3 faceForward = GetFaceForward(renderer);
+            Bounds bounds = GetFaceBounds(renderer);
+
+            PositionCamera(_cachedCamera, bounds, faceForward, headBone);
+        }
+
+        internal static void FrameRendererInCamera(Camera cam, SkinnedMeshRenderer renderer)
+        {
+            PositionCamera(cam, GetFaceBounds(renderer), GetFaceForward(renderer), FindHeadBone(renderer));
+        }
+
+        private static void PositionCamera(Camera cam, Bounds bounds, Vector3 faceForward, Transform headBone)
+        {
             float extentMag = bounds.extents.magnitude;
             if (extentMag < 0.001f || float.IsNaN(extentMag))
             {
@@ -174,15 +207,12 @@ namespace MmdBlendShapeScaler
                 return;
             }
 
-            // 瞄准点 = 面部视觉中心（双眼中点 > head bone 比例偏移）
             Vector3 target = bounds.center;
 
-            // 25° FOV 面部特写，透视投影
             float fov = 25f;
             cam.fieldOfView = fov;
             cam.orthographic = false;
 
-            // 计算距离：让包围球体在 1.2x 留白下刚好装入画面
             float objectRadius = extentMag * 1.2f;
             float distance = objectRadius / Mathf.Tan(fov * 0.5f * Mathf.Deg2Rad);
             distance = Mathf.Max(distance, 0.3f);
@@ -190,26 +220,20 @@ namespace MmdBlendShapeScaler
             float zoom = Mathf.Max(ZoomMultiplier, 0.1f);
             distance /= zoom;
 
-            // 相机置于面部正前方
             cam.transform.position = target + faceForward * distance;
             cam.transform.LookAt(target);
 
-            // 微俯视 2.5°：面部中心在画面上半部，留出脖颈空间
             cam.transform.Rotate(Vector3.right, -2.5f, Space.Self);
         }
 
-        /// <summary>
-        /// 返回面部级别的包围盒。
-        /// ① 面部骨骼蒙皮权重 > 0.3 的顶点包围盒（排除头发/耳朵骨架）；
-        /// ② 回退到头骨位置比例偏移；
-        /// ③ 最终回退到整个 renderer 包围盒。
-        /// 中心点由 GetFaceVisualCenter 提供（双眼中点 > head bone 比例偏移）。
-        /// </summary>
+        // ════════════════════════════════════════════════════════
+        //  面部包围盒计算
+        // ════════════════════════════════════════════════════════
+
         private static Bounds GetFaceBounds(SkinnedMeshRenderer renderer)
         {
             Transform headBone = FindHeadBone(renderer);
 
-            // 1) 面部骨骼权重过滤的顶点包围盒（过滤头发/耳朵）
             Bounds meshBounds = GetFaceBoneWeightBounds(renderer);
             if (meshBounds.extents.magnitude > 0.001f)
             {
@@ -220,7 +244,6 @@ namespace MmdBlendShapeScaler
                 return new Bounds(faceCenter, new Vector3(faceWidth, faceHeight, faceDepth));
             }
 
-            // 2) 头骨 + 比例偏移（回退）
             if (headBone != null)
             {
                 Vector3 faceForward = GetFaceForward(renderer);
@@ -231,21 +254,14 @@ namespace MmdBlendShapeScaler
                 return new Bounds(faceCenter, Vector3.one * estimatedFaceHeight);
             }
 
-            // 3) 全身包围盒
             return renderer.bounds;
         }
 
-        /// <summary>
-        /// 返回视觉面部中心。
-        /// 最优：双眼骨骼中点，下移面高 10%；
-        /// 次优：head bone + 面高比例偏移。
-        /// </summary>
         private static Vector3 GetFaceVisualCenter(SkinnedMeshRenderer renderer, Bounds faceBounds)
         {
             Transform headBone = FindHeadBone(renderer);
             if (headBone == null) return faceBounds.center;
 
-            // Best: midpoint of left + right eye bones, offset slightly down
             FindEyeBones(renderer, out Transform leftEye, out Transform rightEye);
             if (leftEye != null && rightEye != null)
             {
@@ -254,15 +270,10 @@ namespace MmdBlendShapeScaler
                 return eyeMidpoint - headBone.up * downOffset;
             }
 
-            // Fallback: head bone + proportional offset based on face bounds height
             Vector3 faceForward = GetFaceForward(renderer);
             return headBone.position + headBone.up * (faceBounds.size.y * 0.40f) + faceForward * 0.08f;
         }
 
-        /// <summary>
-        /// 收集主要受面部骨骼（head/eye/jaw/nose/lip/brow/face）蒙皮的顶点，
-        /// 排除受 hair/ear/accessory 骨骼主导的顶点。返回世界空间包围盒。
-        /// </summary>
         private static Bounds GetFaceBoneWeightBounds(SkinnedMeshRenderer renderer)
         {
             Mesh sharedMesh = renderer.sharedMesh;
@@ -276,7 +287,6 @@ namespace MmdBlendShapeScaler
             Transform[] bones = renderer.bones;
             if (bones == null) return default;
 
-            // Build set of face bone indices (excludes hair, ears, accessories)
             HashSet<int> faceBoneIndices = new HashSet<int>();
             for (int i = 0; i < bones.Length; i++)
             {
@@ -292,7 +302,6 @@ namespace MmdBlendShapeScaler
             {
                 BoneWeight bw = boneWeights[i];
 
-                // Find primary bone (highest weight)
                 int bestBone = -1;
                 float bestWeight = 0f;
                 CheckBoneWeight(bw.boneIndex0, bw.weight0, ref bestBone, ref bestWeight);
@@ -300,7 +309,6 @@ namespace MmdBlendShapeScaler
                 CheckBoneWeight(bw.boneIndex2, bw.weight2, ref bestBone, ref bestWeight);
                 CheckBoneWeight(bw.boneIndex3, bw.weight3, ref bestBone, ref bestWeight);
 
-                // Include if primary bone is a face bone and weight is significant
                 if (bestBone >= 0 && faceBoneIndices.Contains(bestBone) && bestWeight > 0.3f)
                     worldVerts.Add(localToWorld.MultiplyPoint3x4(meshVertices[i]));
             }
@@ -328,7 +336,6 @@ namespace MmdBlendShapeScaler
             if (string.IsNullOrEmpty(boneName)) return false;
             string lower = boneName.ToLowerInvariant();
 
-            // Exclude non-face bones
             if (lower.Contains("hair") || lower.Contains("kami") ||
                 lower.Contains("ear") || lower.Contains("mimi") ||
                 lower.Contains("hat") || lower.Contains("ribbon") ||
@@ -336,7 +343,6 @@ namespace MmdBlendShapeScaler
                 lower.Contains("tail") || lower.Contains("ponytail"))
                 return false;
 
-            // Include face bones
             return lower.Contains("head") ||
                    lower.Contains("eye") ||
                    lower.Contains("jaw") || lower.Contains("chin") ||
@@ -346,6 +352,10 @@ namespace MmdBlendShapeScaler
                    lower.Contains("face") || lower.Contains("cheek") ||
                    lower.Contains("tongue");
         }
+
+        // ════════════════════════════════════════════════════════
+        //  骨骼查找
+        // ════════════════════════════════════════════════════════
 
         private static void FindEyeBones(SkinnedMeshRenderer renderer, out Transform leftEye, out Transform rightEye)
         {
@@ -381,18 +391,11 @@ namespace MmdBlendShapeScaler
             return null;
         }
 
-        /// <summary>
-        /// 返回面部朝向。
-        /// 优先使用 Head bone 的 forward（面的实际朝向），
-        /// 回退到 renderer.transform.forward。
-        /// </summary>
         private static Vector3 GetFaceForward(SkinnedMeshRenderer renderer)
         {
             Transform headBone = FindHeadBone(renderer);
             if (headBone != null)
             {
-                // headBone.forward 在部分 MMD 模型上指向头部内部(Z轴朝后)而非面部前方
-                // 此时应与角色大致朝向 (renderer.transform.forward) 做点积判断
                 float dot = Vector3.Dot(headBone.forward, renderer.transform.forward);
                 return dot >= 0f ? headBone.forward : -headBone.forward;
             }

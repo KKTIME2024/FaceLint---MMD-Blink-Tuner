@@ -453,6 +453,19 @@ namespace MmdBlendShapeScaler
 
             if (SceneView.lastActiveSceneView != null)
                 SceneView.lastActiveSceneView.Focus();
+
+            FrameSceneViewCamera();
+        }
+
+        private void FrameSceneViewCamera()
+        {
+            if (_faceRenderer == null) return;
+            var sceneView = SceneView.lastActiveSceneView;
+            if (sceneView == null) return;
+
+            var sceneCam = sceneView.camera;
+            BlendShapePreviewRenderer.FrameRendererInCamera(sceneCam, _faceRenderer);
+            sceneView.Repaint();
         }
 
         private void DeselectCurrent()
@@ -593,11 +606,9 @@ namespace MmdBlendShapeScaler
             // Ensure all weights are zero before rendering thumbnails
             RestoreAllWeights();
 
-            // Warm up AnimationMode pipeline — the first BeginSampling→Sample→EndSampling
-            // cycle lazily initializes and doesn't flush to mesh, causing first thumbnail
-            // to render at weight=0. A full dummy cycle on the actual renderer fixes this.
+            // Start a fresh render batch — face bounds / camera are cached inside Render()
             BlendShapePreviewRenderer.ZoomMultiplier = _zoomLevel;
-            BlendShapePreviewRenderer.WarmupAnimationMode(_faceRenderer);
+            BlendShapePreviewRenderer.ClearCache();
 
             // Generate thumbnails
             try
@@ -619,6 +630,7 @@ namespace MmdBlendShapeScaler
             }
             finally
             {
+                BlendShapePreviewRenderer.EndBatch();
                 EditorUtility.ClearProgressBar();
             }
 
