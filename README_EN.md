@@ -17,7 +17,8 @@
 7. Drag the slider (0–200%) — Scene View shows live preview, auto-saves
 8. Navigate with ← Back / ◀ Prev / Next ▶ to go back or move to prev/next shape
 9. Quick-apply: previously confirmed values appear as shortcut buttons below the slider
-10. When done, close the window and **Build & Upload** — NDMF applies all scales automatically
+10. After adjustments, click **Re Scan** — thumbnails regenerate at current scale values, letting you preview all changes at a glance
+11. When done, close the window and **Build & Upload** — NDMF applies all scales automatically
 
 ## How It Works
 
