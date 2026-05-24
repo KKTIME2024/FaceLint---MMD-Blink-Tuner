@@ -402,13 +402,9 @@ namespace MmdBlendShapeScaler
 
         private static Vector3 GetFaceForward(SkinnedMeshRenderer renderer)
         {
-            Transform headBone = GetHeadBone(renderer);
-            if (headBone != null)
-            {
-                float dot = Vector3.Dot(headBone.forward, renderer.transform.forward);
-                return dot >= 0f ? headBone.forward : -headBone.forward;
-            }
-            return renderer.transform.forward;
+            // avatar root transform.forward 在 VRChat 中始终指向角色正面（Z+）
+            // 比 head bone forward（受骨骼朝向影响）更一致可靠
+            return renderer.transform.root.forward;
         }
     }
 }

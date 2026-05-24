@@ -500,9 +500,13 @@ namespace MmdBlendShapeScaler
 
         private void RestoreAllWeights()
         {
-            if (_faceRenderer == null) return;
+            if (_faceRenderer == null || _faceRenderer.sharedMesh == null) return;
+            int count = _faceRenderer.sharedMesh.blendShapeCount;
             foreach (var entry in _entries)
-                _faceRenderer.SetBlendShapeWeight(entry.meshIndex, 0f);
+            {
+                if (entry.meshIndex < count)
+                    _faceRenderer.SetBlendShapeWeight(entry.meshIndex, 0f);
+            }
         }
 
         private float GetSavedScale(string mmdName)
