@@ -33,6 +33,7 @@ namespace MmdBlendShapeScaler
         private int _thumbnailSize = 150;
         private float _zoomLevel = 2.0f;
         private static List<float> _recentValues = new List<float>();  // sorted ascending, deduped
+        private const string ZoomLevelPrefKey = "MmdBlendShapeScaler.ZoomLevel";
         private const int MaxRecentValues = 8;
 
         // ── Foldouts ──
@@ -44,8 +45,7 @@ namespace MmdBlendShapeScaler
         // ── Window ──
         public static void ShowWindow(MmdBlendShapeScaler scaler)
         {
-            var title = Strings.Current.WindowTitle;
-            var window = GetWindow<MmdCalibratorWindow>(title);
+            var window = GetWindow<MmdCalibratorWindow>(Strings.Current.WindowTitle);
             window.minSize = new Vector2(520, 400);
             window._scaler = scaler;
             window._faceRenderer = scaler.targetRenderer;
@@ -55,20 +55,21 @@ namespace MmdBlendShapeScaler
         [MenuItem("Tools/VRC Avatar MMD & Blink Fixer")]
         public static void OpenStandalone()
         {
-            var title = Strings.Current.WindowTitle;
-            var window = GetWindow<MmdCalibratorWindow>(title);
+            var window = GetWindow<MmdCalibratorWindow>(Strings.Current.WindowTitle);
             window.minSize = new Vector2(520, 400);
             window.Show();
         }
 
         private void OnEnable()
         {
+            _zoomLevel = EditorPrefs.GetFloat(ZoomLevelPrefKey, 2.0f);
             EditorApplication.playModeStateChanged += OnPlayModeStateChanged;
             AssemblyReloadEvents.beforeAssemblyReload += OnBeforeAssemblyReload;
         }
 
         private void OnDisable()
         {
+            EditorPrefs.SetFloat(ZoomLevelPrefKey, _zoomLevel);
             EditorApplication.playModeStateChanged -= OnPlayModeStateChanged;
             AssemblyReloadEvents.beforeAssemblyReload -= OnBeforeAssemblyReload;
             RestoreAllWeights();
@@ -105,17 +106,7 @@ namespace MmdBlendShapeScaler
 
             // ── Header ──
             EditorGUILayout.Space(4);
-            EditorGUILayout.BeginHorizontal();
             EditorGUILayout.LabelField(S.WindowTitle, EditorStyles.boldLabel);
-            GUILayout.FlexibleSpace();
-            EditorGUILayout.LabelField(S.LangLabel, GUILayout.Width(40));
-            var newLang = (UILang)EditorGUILayout.EnumPopup(Strings.Language, GUILayout.Width(70));
-            if (newLang != Strings.Language)
-            {
-                Strings.Language = newLang;
-                S = Strings.Current;
-            }
-            EditorGUILayout.EndHorizontal();
 
             // ── Renderer selection ──
             EditorGUILayout.BeginHorizontal();

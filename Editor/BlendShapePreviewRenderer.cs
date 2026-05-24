@@ -16,6 +16,7 @@ namespace MmdBlendShapeScaler
         private static int _cachedRendererId;
         private static GameObject _cachedCameraGo;
         private static Camera _cachedCamera;
+        private static Transform _cachedHeadBone;
         private static bool _batchActive;
 
         /// <summary>
@@ -25,6 +26,7 @@ namespace MmdBlendShapeScaler
         {
             EndBatch();
             _cachedRendererId = 0;
+            _cachedHeadBone = null;
             if (_cachedCameraGo != null)
             {
                 Object.DestroyImmediate(_cachedCameraGo);
@@ -183,16 +185,23 @@ namespace MmdBlendShapeScaler
             _cachedCamera.nearClipPlane = 0.01f;
             _cachedCamera.farClipPlane = 100f;
 
-            Transform headBone = FindHeadBone(renderer);
+            _cachedHeadBone = FindHeadBone(renderer);
             Vector3 faceForward = GetFaceForward(renderer);
             Bounds bounds = GetFaceBounds(renderer);
 
-            PositionCamera(_cachedCamera, bounds, faceForward, headBone);
+            PositionCamera(_cachedCamera, bounds, faceForward, _cachedHeadBone);
         }
 
         internal static void FrameRendererInCamera(Camera cam, SkinnedMeshRenderer renderer)
         {
-            PositionCamera(cam, GetFaceBounds(renderer), GetFaceForward(renderer), FindHeadBone(renderer));
+            PositionCamera(cam, GetFaceBounds(renderer), GetFaceForward(renderer), GetHeadBone(renderer));
+        }
+
+        private static Transform GetHeadBone(SkinnedMeshRenderer renderer)
+        {
+            if (renderer != null && renderer.GetInstanceID() == _cachedRendererId && _cachedHeadBone != null)
+                return _cachedHeadBone;
+            return FindHeadBone(renderer);
         }
 
         private static void PositionCamera(Camera cam, Bounds bounds, Vector3 faceForward, Transform headBone)
@@ -232,7 +241,7 @@ namespace MmdBlendShapeScaler
 
         private static Bounds GetFaceBounds(SkinnedMeshRenderer renderer)
         {
-            Transform headBone = FindHeadBone(renderer);
+            Transform headBone = GetHeadBone(renderer);
 
             Bounds meshBounds = GetFaceBoneWeightBounds(renderer);
             if (meshBounds.extents.magnitude > 0.001f)
@@ -259,7 +268,7 @@ namespace MmdBlendShapeScaler
 
         private static Vector3 GetFaceVisualCenter(SkinnedMeshRenderer renderer, Bounds faceBounds)
         {
-            Transform headBone = FindHeadBone(renderer);
+            Transform headBone = GetHeadBone(renderer);
             if (headBone == null) return faceBounds.center;
 
             FindEyeBones(renderer, out Transform leftEye, out Transform rightEye);
@@ -393,7 +402,7 @@ namespace MmdBlendShapeScaler
 
         private static Vector3 GetFaceForward(SkinnedMeshRenderer renderer)
         {
-            Transform headBone = FindHeadBone(renderer);
+            Transform headBone = GetHeadBone(renderer);
             if (headBone != null)
             {
                 float dot = Vector3.Dot(headBone.forward, renderer.transform.forward);

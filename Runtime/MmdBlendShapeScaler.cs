@@ -8,7 +8,7 @@ namespace MmdBlendShapeScaler
     /// <summary>
     /// Stores per-MMD-blendshape scale factors for non-destructive delta scaling at build time.
     /// Only stores entries where scale ≠ 1.0. GetScale() defaults to 1.0.
-    /// 
+    ///
     /// KEY DESIGN: Explicitly references the target SkinnedMeshRenderer.
     /// Does NOT rely on VRCAvatarDescriptor.VisemeSkinnedMesh,
     /// because MMD blendshapes may live on Body/Face/Head/any mesh.

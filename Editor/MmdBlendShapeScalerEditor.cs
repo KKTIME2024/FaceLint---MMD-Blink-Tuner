@@ -11,6 +11,19 @@ namespace MmdBlendShapeScaler
             var S = Strings.Current;
             var scaler = (MmdBlendShapeScaler)target;
 
+            // ── UI Language (global, persisted to EditorPrefs) ──
+            EditorGUILayout.BeginHorizontal();
+            EditorGUILayout.LabelField(S.LangLabel, GUILayout.Width(80));
+            var newLang = (UILang)EditorGUILayout.EnumPopup(Strings.Language, GUILayout.Width(100));
+            if (newLang != Strings.Language)
+            {
+                Strings.Language = newLang;
+                S = Strings.Current;
+            }
+            EditorGUILayout.EndHorizontal();
+
+            EditorGUILayout.Space(4);
+
             // ── Renderer reference ──
             var newRenderer = (SkinnedMeshRenderer)EditorGUILayout.ObjectField(
                 S.TargetRenderer, scaler.targetRenderer, typeof(SkinnedMeshRenderer), true);
