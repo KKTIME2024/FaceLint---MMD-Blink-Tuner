@@ -1,16 +1,16 @@
-# VRC Avatar MMD & Blink Fixer
+# FaceLint - MMD & Blink Tuner
 
 [中文](../README.md) [English](README_EN.md) [日本語]
 
-> VRChat MMDアバターの捏造後に起こる、目の閉じすぎや特定の表情の誇張を調整します。非破壊的にNDMFでビルド時に自動適用。
+> コードリンターのようにアバターの顔をスキャン — 目の閉じすぎやMMD表情の誇張を視覚的に検出し、スライダーで微調整。NDMFで非破壊ビルド時適用。
 
 ---
 
 ## 使い方
 
-1. コンポーネントを追加：アバターを選択 → **Add Component** → **VRC Avatar MMD & Blink Fixer**
+1. コンポーネントを追加：アバターを選択 → **Add Component** → **FaceLint → MMD & Blink Tuner**
 2. アバターの顔を Target Renderer フィールドにドラッグ（**SkinnedMeshRenderer**を自動認識）
-3. **Open Calibrator** をクリック、またはメニュー **Tools → VRC Avatar MMD & Blink Fixer** を使用
+3. **Open Calibrator** をクリック、またはメニュー **Tools → FaceLint - MMD & Blink Tuner** を使用
 4. 必要に応じて言語を切り替え
 5. **Scan MMD Shapes** をクリックしてメッシュ上の全MMDブレンドシェイプを検出
 6. 任意のサムネイルをクリックして詳細ビューに入る

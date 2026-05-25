@@ -52,7 +52,7 @@ namespace MmdBlendShapeScaler
             window.Show();
         }
 
-        [MenuItem("Tools/VRC Avatar MMD & Blink Fixer")]
+        [MenuItem("Tools/FaceLint - MMD & Blink Tuner")]
         public static void OpenStandalone()
         {
             var window = GetWindow<MmdCalibratorWindow>(Strings.Current.WindowTitle);

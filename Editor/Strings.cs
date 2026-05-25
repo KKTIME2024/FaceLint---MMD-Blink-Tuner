@@ -119,8 +119,8 @@ namespace MmdBlendShapeScaler
 
         private static readonly Strings En = new Strings
         {
-            WindowTitle     = "VRC Avatar MMD & Blink Fixer",
-            ProgressTitle   = "VRC Avatar MMD & Blink Fixer",
+            WindowTitle     = "FaceLint - MMD & Blink Tuner",
+            ProgressTitle   = "FaceLint - MMD & Blink Tuner",
             LangLabel       = "Language",
 
             FaceRenderer    = "Face Renderer",
@@ -179,8 +179,8 @@ namespace MmdBlendShapeScaler
 
         private static readonly Strings ZhCN = new Strings
         {
-            WindowTitle     = "VRC Avatar MMD & Blink Fixer",
-            ProgressTitle   = "VRC Avatar MMD & Blink Fixer",
+            WindowTitle     = "FaceLint - MMD & Blink Tuner",
+            ProgressTitle   = "FaceLint - MMD & Blink Tuner",
             LangLabel       = "语言",
 
             FaceRenderer    = "面部渲染器",
@@ -239,8 +239,8 @@ namespace MmdBlendShapeScaler
 
         private static readonly Strings Ja = new Strings
         {
-            WindowTitle     = "VRC Avatar MMD & Blink Fixer",
-            ProgressTitle   = "VRC Avatar MMD & Blink Fixer",
+            WindowTitle     = "FaceLint - MMD & Blink Tuner",
+            ProgressTitle   = "FaceLint - MMD & Blink Tuner",
             LangLabel       = "言語",
 
             FaceRenderer    = "顔レンダラー",

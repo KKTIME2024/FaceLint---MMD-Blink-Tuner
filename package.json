@@ -1,11 +1,11 @@
 {
     "name": "vrc-avatar-mmd-blink-fixer",
-    "displayName": "VRC Avatar MMD & Blink Fixer",
-    "version": "0.5.1",
-    "description": "VRChat MMDアバターの目と口の誇張を修正。NDMFでビルド時に非破壊適用。 | Fix over-closed eyes and exaggerated expressions on VRChat MMD avatars. | 修复VRChat MMD模型眼部过度闭合和表情夸张。",
+    "displayName": "FaceLint - MMD & Blink Tuner",
+    "version": "0.5.2",
+    "description": "Like a linter for your avatar's face. Scan, visually detect over-closed eyes and exaggerated MMD expressions, then tune them with a slider. Non-destructive, build-time via NDMF. | 像代码Linter一样扫描面部 — 可视发现眨眼过度闭合和MMD表情夸张，滑块精准调校。NDMF非破坏构建时应用。",
     "unity": "2022.3",
     "author": {
-        "name": "MMD BlendShape Scaler"
+        "name": "FaceLint"
     },
     "vpmDependencies": {
         "com.vrchat.avatars": ">=3.7.0",

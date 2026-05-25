@@ -1,15 +1,15 @@
-# VRC Avatar MMD & Blink Fixer
+# FaceLint - MMD & Blink Tuner
 
 [中文] [English](README_EN.md) [日本語](README_JA.md)
 
-> 调整VRChat MMD Avatat捏脸后眼睛过度闭合和某些表情夸张的问题。通过非破坏性的 NDMF 在构建时自动应用。
+> Like a linter for your avatar's face. Scan to visually detect over-closed eyes and exaggerated MMD expressions, then tune them with a slider. NDMF 非破坏构建时自动应用。
 
 ---
 ## 使用方法
 
-1. 添加组件：选择你的模型 → **Add Component** → **VRC Avatar MMD & Blink Fixer**
+1. 添加组件：选择你的模型 → **Add Component** → **FaceLint → MMD & Blink Tuner**
 2. 将avatar的面部拖入 Target Renderer 字段（自动识别**SkinnedMeshRenderer**组件）
-3. 点击 **Open Calibrator**，或使用菜单 **Tools → VRC Avatar MMD & Blink Fixer**
+3. 点击 **Open Calibrator**，或使用菜单 **Tools → FaceLint - MMD & Blink Tuner**
 4. 可以切换语言
 5. 点击 **Scan MMD Shapes** 找到该网格上的所有 MMD 形态键
 6. 点击任意缩略图进入详情视图
