@@ -300,6 +300,9 @@ namespace MmdBlendShapeScaler
             var S = Strings.Current;
             EditorGUILayout.BeginVertical(GUILayout.Width(_thumbnailSize));
 
+            // Lazy thumbnail render on first visible draw
+            EnsureThumbnail(entry);
+
             var oldBg = GUI.backgroundColor;
             if (entry.IsModified)
                 GUI.backgroundColor = new Color(1f, 0.7f, 0.3f, 0.3f);
@@ -888,35 +891,21 @@ namespace MmdBlendShapeScaler
             // Ensure all weights are zero before rendering thumbnails
             RestoreAllWeights();
 
-            // Start a fresh render batch — face bounds / camera are cached inside Render()
+            // Prepare for lazy thumbnail rendering
             BlendShapePreviewRenderer.ZoomMultiplier = _zoomLevel;
             BlendShapePreviewRenderer.ClearCache();
 
-            // Generate thumbnails
-            try
-            {
-                for (int i = 0; i < _entries.Count; i++)
-                {
-                    var entry = _entries[i];
-                    EditorUtility.DisplayProgressBar(
-                        S.ProgressTitle,
-                        string.Format(S.ProgressFmt, entry.name, i + 1, _entries.Count),
-                        (float)i / _entries.Count);
-
-                    entry.thumbnail = BlendShapePreviewRenderer.Render(
-                        _faceRenderer,
-                        entry.meshIndex,
-                        entry.sliderValue,  // Render at saved scale to reflect adjustments
-                        _thumbnailSize);
-                }
-            }
-            finally
-            {
-                BlendShapePreviewRenderer.EndBatch();
-                EditorUtility.ClearProgressBar();
-            }
-
             Repaint();
+        }
+
+        private void EnsureThumbnail(ShapeEntry entry)
+        {
+            if (entry.thumbnail != null) return;
+            if (_faceRenderer == null || _faceRenderer.sharedMesh == null) return;
+            if (entry.meshIndex < 0 || entry.meshIndex >= _faceRenderer.sharedMesh.blendShapeCount) return;
+
+            entry.thumbnail = BlendShapePreviewRenderer.Render(
+                _faceRenderer, entry.meshIndex, entry.sliderValue, _thumbnailSize);
         }
 
         private void ClearThumbnails()
