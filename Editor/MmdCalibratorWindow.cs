@@ -469,7 +469,19 @@ namespace MmdBlendShapeScaler
                 Repaint();
             }
 
-            EditorGUILayout.Space(8);
+            // Zone labels
+            if (Event.current.type == EventType.Repaint)
+            {
+                var r = GUILayoutUtility.GetLastRect();
+                var half = r.width * 0.5f;
+                EditorGUI.DrawRect(new Rect(r.x, r.y + r.height - 3, half, 3), new Color(0f, 0.5f, 0f, 0.15f));
+                EditorGUI.DrawRect(new Rect(r.x + half, r.y + r.height - 3, half, 3), new Color(1f, 0.5f, 0f, 0.15f));
+                // Tick at 100
+                float t = r.x + half;
+                EditorGUI.DrawRect(new Rect(t - 1, r.y + r.height - 6, 2, 6), new Color(0.5f, 0.5f, 0.5f, 0.5f));
+            }
+
+            EditorGUILayout.Space(4);
 
             // Quick-apply: up to 5 recent values (including 100%)
             EditorGUILayout.BeginHorizontal();
