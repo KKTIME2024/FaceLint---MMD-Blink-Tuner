@@ -114,6 +114,9 @@ namespace MmdBlendShapeScaler
         public string DlgRescanTitle;
         public string DlgRescanMsgFmt;       // "{0} shapes have unconfirmed changes..."
         public string DlgRescanBtn;
+        public string DlgResetCategoryFmt;   // "Reset all {0} {1} shapes to 100%?"
+        public string ExportPreset;
+        public string ImportPreset;
 
         // ── Progress ──
         public string ProgressFmt;           // "Rendering {0} ({1}/{2})"
@@ -183,6 +186,9 @@ namespace MmdBlendShapeScaler
             DlgRescanMsgFmt = "{0} shapes have unconfirmed changes. Re-scanning will lose them.\n\n" +
                               "Confirm changes first or enable Auto-Confirm mode.",
             DlgRescanBtn   = "Re-scan (discard changes)",
+            DlgResetCategoryFmt = "Reset all {0} ({1}) shapes to 100%?",
+            ExportPreset   = "Export Preset...",
+            ImportPreset   = "Import Preset...",
 
             ProgressFmt    = "Rendering {0} ({1}/{2})",
         };
@@ -248,6 +254,9 @@ namespace MmdBlendShapeScaler
             DlgRescanMsgFmt = "{0} 个形态键有未确认的修改。重新扫描将丢失这些修改。\n\n" +
                               "请先确认修改，或启用自动确认模式。",
             DlgRescanBtn   = "重新扫描（放弃修改）",
+            DlgResetCategoryFmt = "将 {0}（{1} 个）重置为 100%？",
+            ExportPreset   = "导出配置...",
+            ImportPreset   = "导入配置...",
 
             ProgressFmt    = "正在渲染 {0}（{1}/{2}）",
         };
@@ -313,6 +322,9 @@ namespace MmdBlendShapeScaler
             DlgRescanMsgFmt = "{0} 個のシェイプに未確認の変更があります。再スキャンすると失われます。\n\n" +
                               "先に変更を確認するか、自動確認モードを有効にしてください。",
             DlgRescanBtn   = "再スキャン（変更を破棄）",
+            DlgResetCategoryFmt = "{0}（{1}個）を100%にリセットしますか？",
+            ExportPreset   = "設定をエクスポート...",
+            ImportPreset   = "設定をインポート...",
 
             ProgressFmt    = "レンダリング中 {0}（{1}/{2}）",
         };

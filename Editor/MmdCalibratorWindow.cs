@@ -270,7 +270,33 @@ namespace MmdBlendShapeScaler
             string label = $"{title} ({items.Count})";
             if (modified > 0) label += $" {string.Format(S.ModifiedCountFmt, modified)}";
 
+            EditorGUILayout.BeginHorizontal();
             foldout = EditorGUILayout.Foldout(foldout, label, true);
+            if (modified > 0)
+            {
+                if (GUILayout.Button("↺", EditorStyles.miniButton, GUILayout.Width(20)))
+                {
+                    if (EditorUtility.DisplayDialog(S.DlgResetTitle,
+                        string.Format(S.DlgResetCategoryFmt, title, items.Count),
+                        S.DlgResetBtn, S.DlgCancelBtn))
+                    {
+                        foreach (var e in items)
+                        {
+                            e.sliderValue = 100;
+                            if (_scaler != null)
+                            {
+                                Undo.RegisterCompleteObjectUndo(_scaler, $"Reset {title} to 100%");
+                                _scaler.RemoveScale(e.name);
+                            }
+                        }
+                        EditorUtility.SetDirty(_scaler);
+                        RestoreAllWeights();
+                        Repaint();
+                    }
+                }
+            }
+            GUILayout.FlexibleSpace();
+            EditorGUILayout.EndHorizontal();
             if (!foldout) return;
 
             float availableWidth = position.width - 40;
