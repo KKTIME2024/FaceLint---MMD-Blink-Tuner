@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git:*)",
+      "Bash(gh:*)",
+      "Bash(cd:*)",
+      "Bash(ls:*)",
+      "Bash(echo:*)"
+    ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "tools": ["Edit", "Write"],
+        "paths": ["Editor/Strings.cs"],
+        "prompt": "You just edited Strings.cs. Verify trilingual parity: run `grep -c '=' Editor/Strings.cs` to check each field appears in all 3 languages (En, ZhCN, Ja). Run the trilingual-reviewer agent if unsure.",
+        "description": "Remind to verify EN/ZH/JA string parity after editing Strings.cs"
+      }
+    ]
+  }
+}
