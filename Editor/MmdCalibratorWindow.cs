@@ -50,6 +50,9 @@ namespace MmdBlendShapeScaler
         private string _searchFilter = "";
         private bool _showModifiedOnly;
 
+        // ── A/B compare ──
+        private bool _isComparing;
+
         // ── Embedded 3D preview ──
         private GameObject _previewCameraGo;
         private Camera _previewCamera;
@@ -439,7 +442,22 @@ namespace MmdBlendShapeScaler
             // Slider and presets
             EditorGUILayout.BeginVertical();
 
+            EditorGUILayout.BeginHorizontal();
             EditorGUILayout.LabelField(S.ScaleFactor, EditorStyles.boldLabel);
+            if (GUILayout.Button(_isComparing ? "100%" : "A/B", EditorStyles.miniButton, GUILayout.Width(40)))
+            {
+                _isComparing = !_isComparing;
+                UpdatePreviewAfterCompare();
+            }
+            EditorGUILayout.EndHorizontal();
+
+            if (_isComparing)
+            {
+                var c = GUI.color;
+                GUI.color = new Color(0.4f, 0.8f, 1f);
+                EditorGUILayout.LabelField(S.CompareHint, EditorStyles.miniLabel);
+                GUI.color = c;
+            }
 
             // Slider — preview only, save on navigation / confirm
             float newVal = EditorGUILayout.Slider(entry.sliderValue, 0f, 200f);
@@ -585,14 +603,24 @@ namespace MmdBlendShapeScaler
             if (_selectedEntry == null) return;
             _faceRenderer.SetBlendShapeWeight(_selectedEntry.meshIndex, 0f);
             _selectedEntry = null;
+            _isComparing = false;
             DestroyPreviewResources();
         }
 
         private void PreviewOnMesh(ShapeEntry entry)
         {
             if (_faceRenderer == null) return;
-            _faceRenderer.SetBlendShapeWeight(entry.meshIndex, entry.sliderValue);
+            float weight = _isComparing ? 100f : entry.sliderValue;
+            _faceRenderer.SetBlendShapeWeight(entry.meshIndex, weight);
             SceneView.RepaintAll();
+        }
+
+        private void UpdatePreviewAfterCompare()
+        {
+            if (_selectedEntry == null) return;
+            PreviewOnMesh(_selectedEntry);
+            RenderPreview();
+            Repaint();
         }
 
         private void ConfirmCurrent()

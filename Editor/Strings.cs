@@ -96,6 +96,7 @@ namespace MmdBlendShapeScaler
         public string PctValue;              // "100%"
         public string SyncToBlinkFmt;       // "Sync to {0} other blink shape(s)"
         public string SyncToBlinkDone;       // "Synced {0}% to {1} blink shape(s)"
+        public string CompareHint;           // "Holding A/B compare — showing 100%"
 
         // ── Inspector ──
         public string TargetRenderer;
@@ -165,6 +166,7 @@ namespace MmdBlendShapeScaler
             PctValue       = "100%",
             SyncToBlinkFmt = "Apply to {0} other blink shape(s)",
             SyncToBlinkDone = "✓ Synced {0}% to {1} blink shape(s)",
+            CompareHint = "A/B: showing 100% (original) — toggle off to return",
 
             TargetRenderer   = "Target Renderer",
             OpenCalibrator   = "Open Calibrator",
@@ -229,6 +231,7 @@ namespace MmdBlendShapeScaler
             PctValue       = "100%",
             SyncToBlinkFmt = "同步到其他 {0} 个闭眼形状",
             SyncToBlinkDone = "✓ 已将 {0}% 同步到 {1} 个闭眼形状",
+            CompareHint = "A/B: 当前显示 100%（原始值）— 再次切换返回",
 
             TargetRenderer   = "目标渲染器",
             OpenCalibrator   = "打开校准器",
@@ -293,6 +296,7 @@ namespace MmdBlendShapeScaler
             PctValue       = "100%",
             SyncToBlinkFmt = "他の{0}個のまばたきに適用",
             SyncToBlinkDone = "✓ {0}%を{1}個のまばたきに同期しました",
+            CompareHint = "A/B: 100%（オリジナル）を表示中 — 再切替で戻る",
 
             TargetRenderer   = "ターゲットレンダラー",
             OpenCalibrator   = "キャリブレーターを開く",
