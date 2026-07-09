@@ -7,42 +7,14 @@
 
 ## P0 — 窗口内嵌实时 3D 预览
 
-**当前问题：** 滑块在 EditorWindow，3D 效果在 Scene View。用户必须保持双窗口可见，每次选新 shape 时 Scene View 焦点和 camera 角度被覆写。
+**状态：** ✅ 已实现（`feature/embedded-preview` commit `f8d07bc`）
 
-**目标：** 在详情视图右侧或下方嵌入一个独立 3D 预览区域，不依赖 Scene View。
-
-**设计方案：**
-
-```
-┌──────────────────────────────────────────────────┐
-│  ← 返回网格   まばたき   眨眼/Blink   [◀] [▶]   │
-├──────────────────────┬───────────────────────────┤
-│                      │  缩放因子                  │
-│   嵌入式 3D 预览     │  [━━━━●━━━━━]  77%        │
-│   (RenderTexture)    │  0                   200   │
-│                      │                           │
-│  可拖拽旋转/缩放     │  [同步到其他 3 个闭眼形状]  │
-│  独立的 Orbit 相机   │                           │
-│                      │  Scene View 也有实时预览    │
-└──────────────────────┴───────────────────────────┘
-```
-
-**技术方案：**
-- 在 `MmdCalibratorWindow` 中持有一个 `RenderTexture`（200×200 左右）
-- 在 `OnEnable` 时创建 `Camera` 对象（隐藏的 `gameObject.hideFlags = HideFlags.HideAndDontSave`）
-- 用 `Camera.Render()` 将渲染结果输出到 `RenderTexture`
-- 用 `GUI.DrawTexture()` 绘制到 EditorWindow
-- 支持鼠标拖拽旋转（`EventType.MouseDrag` → 绕 Y/X 轴旋转 camera）
-- 生命周期：`OnDisable` 时销毁 Camera + RT，避免泄漏
-
-**工作量：** M（1–2 天）
-
-**前置条件：** 无。独立于所有现有功能。
-
-**边缘情况：**
-- 网格视图和详情视图切换时 → Destroy 旧 RT，重新创建（或复用）
-- 窗口 resize → 重建 RT 匹配新尺寸
-- 多窗口/多 avatar → 每个 window 实例独立维护自己的 camera + RT
+**实现内容：**
+- 详情视图右侧 200×200 RenderTexture 实时 3D 预览
+- 鼠标拖拽旋转（yaw/pitch）+ 滚轮缩放
+- 滑块变化实时反映在预览中
+- Prev/Next 导航时 Camera 资源保持，不重建
+- 离开详情视图时自动销毁 Camera + RT
 
 ---
 
