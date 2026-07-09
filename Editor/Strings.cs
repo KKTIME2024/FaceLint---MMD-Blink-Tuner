@@ -117,6 +117,7 @@ namespace MmdBlendShapeScaler
         public string DlgResetCategoryFmt;   // "Reset all {0} {1} shapes to 100%?"
         public string ExportPreset;
         public string ImportPreset;
+        public string FirstTimeGuide;        // "💡 Drag the slider..."
 
         // ── Progress ──
         public string ProgressFmt;           // "Rendering {0} ({1}/{2})"
@@ -160,7 +161,7 @@ namespace MmdBlendShapeScaler
             Next           = "Next ▶",
             NoPreview      = "No Preview",
             PreviewDragHint = "Drag to orbit | Scroll to zoom",
-            ScaleFactor    = "Scale Factor",
+            ScaleFactor    = "MMD Strength",
             Quick          = "Quick:",
             SceneViewHint  = "Scene View shows live preview. Rotate to inspect.",
             ScaledToFmt    = "Scaled to {0}% (default 100%)",
@@ -189,6 +190,7 @@ namespace MmdBlendShapeScaler
             DlgResetCategoryFmt = "Reset all {0} ({1}) shapes to 100%?",
             ExportPreset   = "Export Preset...",
             ImportPreset   = "Import Preset...",
+            FirstTimeGuide = "💡 Drag the slider to adjust MMD strength, orbit the preview to inspect.",
 
             ProgressFmt    = "Rendering {0} ({1}/{2})",
         };
@@ -228,7 +230,7 @@ namespace MmdBlendShapeScaler
             Next           = "下一个 ▶",
             NoPreview      = "无预览",
             PreviewDragHint = "拖拽旋转 | 滚轮缩放",
-            ScaleFactor    = "缩放系数",
+            ScaleFactor    = "MMD 驱动强度",
             Quick          = "快速：",
             SceneViewHint  = "Scene View 显示实时预览，可旋转查看。",
             ScaledToFmt    = "已缩放至 {0}%（默认 100%）",
@@ -257,6 +259,7 @@ namespace MmdBlendShapeScaler
             DlgResetCategoryFmt = "将 {0}（{1} 个）重置为 100%？",
             ExportPreset   = "导出配置...",
             ImportPreset   = "导入配置...",
+            FirstTimeGuide = "💡 拖动滑块调节 MMD 驱动强度，可在预览区旋转查看效果。",
 
             ProgressFmt    = "正在渲染 {0}（{1}/{2}）",
         };
@@ -296,7 +299,7 @@ namespace MmdBlendShapeScaler
             Next           = "次へ ▶",
             NoPreview      = "プレビューなし",
             PreviewDragHint = "ドラッグで回転 | スクロールで拡大",
-            ScaleFactor    = "拡大率",
+            ScaleFactor    = "MMD強度",
             Quick          = "クイック:",
             SceneViewHint  = "Scene Viewでリアルタイムプレビュー。回転して確認できます。",
             ScaledToFmt    = "{0}%に拡大縮小（デフォルト100%）",
@@ -325,6 +328,7 @@ namespace MmdBlendShapeScaler
             DlgResetCategoryFmt = "{0}（{1}個）を100%にリセットしますか？",
             ExportPreset   = "設定をエクスポート...",
             ImportPreset   = "設定をインポート...",
+            FirstTimeGuide = "💡 スライダーでMMD強度を調整、プレビューをドラッグして回転。",
 
             ProgressFmt    = "レンダリング中 {0}（{1}/{2}）",
         };

@@ -50,6 +50,9 @@ namespace MmdBlendShapeScaler
         private string _searchFilter = "";
         private bool _showModifiedOnly;
 
+        // ── First-time guide ──
+        private static readonly string GuideShownKey = "FaceLint.GuideShown";
+
         // ── A/B compare ──
         private bool _isComparing;
 
@@ -565,6 +568,14 @@ namespace MmdBlendShapeScaler
             else
             {
                 _syncFeedbackMessage = null;
+            }
+
+            // First-time guide (once per Unity session)
+            if (!SessionState.GetBool(GuideShownKey, false))
+            {
+                EditorGUILayout.HelpBox(S.FirstTimeGuide, MessageType.Info);
+                if (Event.current.type == EventType.Repaint)
+                    SessionState.SetBool(GuideShownKey, true);
             }
 
             EditorGUILayout.Space(8);
