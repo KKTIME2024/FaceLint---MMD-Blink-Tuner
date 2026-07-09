@@ -42,9 +42,9 @@ namespace MmdBlendShapeScaler
         private bool _foldoutBrow = true;
         private bool _foldoutOther = true;
 
-        // ── Linked eye-closing ──
-        private bool _linkEyeClosingShapes;
-        private const string LinkEyeClosingPrefKey = "MmdBlendShapeScaler.LinkEyeClosing";
+        // ── Sync feedback ──
+        private string _syncFeedbackMessage;
+        private double _syncFeedbackEndTime;
 
         // ── Window ──
         public static void ShowWindow(MmdBlendShapeScaler scaler)
@@ -67,7 +67,6 @@ namespace MmdBlendShapeScaler
         private void OnEnable()
         {
             _zoomLevel = EditorPrefs.GetFloat(ZoomLevelPrefKey, 2.0f);
-            _linkEyeClosingShapes = EditorPrefs.GetBool(LinkEyeClosingPrefKey, false);
             EditorApplication.playModeStateChanged += OnPlayModeStateChanged;
             AssemblyReloadEvents.beforeAssemblyReload += OnBeforeAssemblyReload;
         }
@@ -75,7 +74,6 @@ namespace MmdBlendShapeScaler
         private void OnDisable()
         {
             EditorPrefs.SetFloat(ZoomLevelPrefKey, _zoomLevel);
-            EditorPrefs.SetBool(LinkEyeClosingPrefKey, _linkEyeClosingShapes);
             EditorApplication.playModeStateChanged -= OnPlayModeStateChanged;
             AssemblyReloadEvents.beforeAssemblyReload -= OnBeforeAssemblyReload;
             RestoreAllWeights();
@@ -373,11 +371,7 @@ namespace MmdBlendShapeScaler
             float newVal = EditorGUILayout.Slider(entry.sliderValue, 0f, 200f);
             if (Mathf.Abs(newVal - entry.sliderValue) > 0.1f)
             {
-                int val = Mathf.RoundToInt(newVal);
-                if (_linkEyeClosingShapes && IsCurrentEyeClosing)
-                    ForEachEyeClosing(e => e.sliderValue = val);
-                else
-                    entry.sliderValue = val;
+                entry.sliderValue = Mathf.RoundToInt(newVal);
                 PreviewOnMesh(entry);
                 Repaint();
             }
@@ -405,19 +399,36 @@ namespace MmdBlendShapeScaler
             GUILayout.FlexibleSpace();
             EditorGUILayout.EndHorizontal();
 
-            // ── Linked eye-closing toggle ──
-            if (IsCurrentEyeClosing)
+            // ── Sync to sibling blink shapes ──
+            if (IsCurrentEyeClosing && _selectedEntry != null)
             {
-                _linkEyeClosingShapes = EditorGUILayout.Toggle(S.ApplyToAllBlink, _linkEyeClosingShapes);
-                if (_linkEyeClosingShapes)
+                var siblings = _entries.Where(e => e != _selectedEntry && IsEyeClosing(e)).ToList();
+                if (siblings.Count > 0)
                 {
-                    EditorGUILayout.LabelField(S.LinkedBlinkHint, EditorStyles.miniLabel);
+                    bool allMatch = siblings.All(e => e.sliderValue == entry.sliderValue);
+                    EditorGUI.BeginDisabledGroup(allMatch);
+                    if (GUILayout.Button(string.Format(S.SyncToBlinkFmt, siblings.Count), GUILayout.Height(24)))
+                    {
+                        SyncToSiblingBlink(entry, siblings);
+                    }
+                    EditorGUI.EndDisabledGroup();
                 }
             }
-            else if (_linkEyeClosingShapes)
+
+            // Sync feedback
+            if (!string.IsNullOrEmpty(_syncFeedbackMessage) && EditorApplication.timeSinceStartup < _syncFeedbackEndTime)
             {
-                _linkEyeClosingShapes = false;
+                var c = GUI.color;
+                GUI.color = Color.green;
+                EditorGUILayout.LabelField(_syncFeedbackMessage, EditorStyles.miniLabel);
+                GUI.color = c;
+                Repaint();
             }
+            else
+            {
+                _syncFeedbackMessage = null;
+            }
+
             EditorGUILayout.Space(8);
             EditorGUILayout.LabelField(S.SceneViewHint, EditorStyles.miniLabel);
             if (entry.IsModified)
@@ -460,13 +471,6 @@ namespace MmdBlendShapeScaler
         }
 
         private bool IsCurrentEyeClosing => _selectedEntry != null && IsEyeClosing(_selectedEntry);
-
-        private void ForEachEyeClosing(System.Action<ShapeEntry> action)
-        {
-            foreach (var e in _entries)
-                if (IsEyeClosing(e))
-                    action(e);
-        }
 
         private void SelectEntry(ShapeEntry entry)
         {
@@ -529,12 +533,7 @@ namespace MmdBlendShapeScaler
                     _recentValues.RemoveAt(_recentValues.Count - 1); // drop largest
             }
 
-            if (_linkEyeClosingShapes && IsCurrentEyeClosing)
-            {
-                Undo.RegisterCompleteObjectUndo(_scaler, $"Set MMD Scale (all blink)={entry.sliderValue}%");
-                ForEachEyeClosing(e => _scaler.SetScale(e.name, entry.Scale));
-            }
-            else
+            if (_scaler != null)
             {
                 Undo.RegisterCompleteObjectUndo(_scaler, $"Set MMD Scale {entry.name}={entry.sliderValue}%");
                 _scaler.SetScale(entry.name, entry.Scale);
@@ -545,13 +544,31 @@ namespace MmdBlendShapeScaler
 
         private void ApplyQuickPct(int pct)
         {
-            if (_linkEyeClosingShapes && IsCurrentEyeClosing)
-                ForEachEyeClosing(e => e.sliderValue = pct);
-            else if (_selectedEntry != null)
-                _selectedEntry.sliderValue = pct;
-            if (_selectedEntry != null)
-                PreviewOnMesh(_selectedEntry);
+            if (_selectedEntry == null) return;
+            _selectedEntry.sliderValue = pct;
+            PreviewOnMesh(_selectedEntry);
             ConfirmCurrent();
+        }
+
+        private void SyncToSiblingBlink(ShapeEntry source, List<ShapeEntry> siblings)
+        {
+            if (_scaler == null) return;
+            var S = Strings.Current;
+
+            Undo.RegisterCompleteObjectUndo(_scaler,
+                $"Sync {source.sliderValue}% to {siblings.Count} blink shape(s)");
+
+            foreach (var sib in siblings)
+            {
+                sib.sliderValue = source.sliderValue;
+                _scaler.SetScale(sib.name, source.Scale);
+            }
+
+            EditorUtility.SetDirty(_scaler);
+            Repaint();
+
+            _syncFeedbackMessage = string.Format(S.SyncToBlinkDone, source.sliderValue, siblings.Count);
+            _syncFeedbackEndTime = EditorApplication.timeSinceStartup + 2.0;
         }
 
         private void RestoreAllWeights()

@@ -92,8 +92,8 @@ namespace MmdBlendShapeScaler
         public string Confirm;
         public string Cancel;
         public string PctValue;              // "100%"
-        public string ApplyToAllBlink;       // "Apply to all blink shapes"
-        public string LinkedBlinkHint;       // hint shown when toggle is on
+        public string SyncToBlinkFmt;       // "Sync to {0} other blink shape(s)"
+        public string SyncToBlinkDone;       // "Synced {0}% to {1} blink shape(s)"
 
         // ── Inspector ──
         public string TargetRenderer;
@@ -159,8 +159,8 @@ namespace MmdBlendShapeScaler
             Confirm        = "✓ Confirm",
             Cancel         = "✗ Cancel",
             PctValue       = "100%",
-            ApplyToAllBlink = "Apply to all blink shapes",
-            LinkedBlinkHint = "All blink shapes update together (preview shows only the active shape).",
+            SyncToBlinkFmt = "Apply to {0} other blink shape(s)",
+            SyncToBlinkDone = "✓ Synced {0}% to {1} blink shape(s)",
 
             TargetRenderer   = "Target Renderer",
             OpenCalibrator   = "Open Calibrator",
@@ -221,8 +221,8 @@ namespace MmdBlendShapeScaler
             Confirm        = "✓ 确认",
             Cancel         = "✗ 取消",
             PctValue       = "100%",
-            ApplyToAllBlink = "应用到所有闭眼形态键",
-            LinkedBlinkHint = "所有闭眼形态键同步调整（预览仅显示当前选中项）。",
+            SyncToBlinkFmt = "同步到其他 {0} 个闭眼形状",
+            SyncToBlinkDone = "✓ 已将 {0}% 同步到 {1} 个闭眼形状",
 
             TargetRenderer   = "目标渲染器",
             OpenCalibrator   = "打开校准器",
@@ -283,8 +283,8 @@ namespace MmdBlendShapeScaler
             Confirm        = "✓ 確認",
             Cancel         = "✗ キャンセル",
             PctValue       = "100%",
-            ApplyToAllBlink = "全てのまばたきシェイプに適用",
-            LinkedBlinkHint = "全まばたきシェイプが連動します（プレビューは選択中のシェイプのみ）。",
+            SyncToBlinkFmt = "他の{0}個のまばたきに適用",
+            SyncToBlinkDone = "✓ {0}%を{1}個のまばたきに同期しました",
 
             TargetRenderer   = "ターゲットレンダラー",
             OpenCalibrator   = "キャリブレーターを開く",
