@@ -78,6 +78,7 @@ namespace MmdBlendShapeScaler
         public string ModifiedCountFmt;      // "[modified: {0}]"
         public string ResetAll;
         public string ReScan;
+        public string ShowModifiedOnly;        // "Modified only"
         public string CurrentTooltipFmt;     // "Current: {0}%"
 
         // ── Detail View ──
@@ -147,6 +148,7 @@ namespace MmdBlendShapeScaler
             ModifiedCountFmt   = "[modified: {0}]",
             ResetAll           = "Reset All to 100%",
             ReScan             = "Re-scan",
+            ShowModifiedOnly   = "Modified only",
             CurrentTooltipFmt  = "Current: {0}%",
 
             BackToGrid     = "← Back to Grid",
@@ -210,6 +212,7 @@ namespace MmdBlendShapeScaler
             ModifiedCountFmt   = "[已修改: {0}]",
             ResetAll           = "全部重置为 100%",
             ReScan             = "重新扫描",
+            ShowModifiedOnly   = "仅已修改",
             CurrentTooltipFmt  = "当前: {0}%",
 
             BackToGrid     = "← 返回网格",
@@ -273,6 +276,7 @@ namespace MmdBlendShapeScaler
             ModifiedCountFmt   = "[変更: {0}]",
             ResetAll           = "全て100%にリセット",
             ReScan             = "再スキャン",
+            ShowModifiedOnly   = "変更のみ",
             CurrentTooltipFmt  = "現在: {0}%",
 
             BackToGrid     = "← グリッドに戻る",

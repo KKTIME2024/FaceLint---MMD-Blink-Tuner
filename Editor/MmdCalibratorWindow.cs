@@ -46,6 +46,10 @@ namespace MmdBlendShapeScaler
         private string _syncFeedbackMessage;
         private double _syncFeedbackEndTime;
 
+        // ── Search / filter ──
+        private string _searchFilter = "";
+        private bool _showModifiedOnly;
+
         // ── Embedded 3D preview ──
         private GameObject _previewCameraGo;
         private Camera _previewCamera;
@@ -218,6 +222,13 @@ namespace MmdBlendShapeScaler
 
             EditorGUILayout.Space(4);
 
+            // ── Search / filter ──
+            GUILayout.BeginHorizontal();
+            _searchFilter = EditorGUILayout.TextField(_searchFilter, EditorStyles.toolbarSearchField);
+            _showModifiedOnly = GUILayout.Toggle(_showModifiedOnly, S.ShowModifiedOnly, GUILayout.ExpandWidth(false));
+            GUILayout.EndHorizontal();
+            EditorGUILayout.Space(4);
+
             _scrollPos = EditorGUILayout.BeginScrollView(_scrollPos);
 
             DrawCategoryGrid(S.Eyes, MmdShapeCategory.眼部, ref _foldoutEye);
@@ -240,7 +251,15 @@ namespace MmdBlendShapeScaler
         private void DrawCategoryGrid(string title, MmdShapeCategory category, ref bool foldout)
         {
             var S = Strings.Current;
-            var items = _entries.Where(e => (e.category & category) != 0 ||
+
+            // Apply search + modified-only filter before category filter
+            IEnumerable<ShapeEntry> filtered = _entries;
+            if (!string.IsNullOrEmpty(_searchFilter))
+                filtered = filtered.Where(e => e.name.IndexOf(_searchFilter, System.StringComparison.OrdinalIgnoreCase) >= 0);
+            if (_showModifiedOnly)
+                filtered = filtered.Where(e => e.IsModified);
+
+            var items = filtered.Where(e => (e.category & category) != 0 ||
                 (category == MmdShapeCategory.未知 && e.category == MmdShapeCategory.未知)).ToList();
             if (items.Count == 0) return;
 
