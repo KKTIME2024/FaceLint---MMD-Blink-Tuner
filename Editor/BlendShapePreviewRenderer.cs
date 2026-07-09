@@ -197,7 +197,7 @@ namespace MmdBlendShapeScaler
             PositionCamera(cam, GetFaceBounds(renderer), GetFaceForward(renderer), GetHeadBone(renderer));
         }
 
-        private static Transform GetHeadBone(SkinnedMeshRenderer renderer)
+        internal static Transform GetHeadBone(SkinnedMeshRenderer renderer)
         {
             if (renderer != null && renderer.GetInstanceID() == _cachedRendererId && _cachedHeadBone != null)
                 return _cachedHeadBone;
@@ -239,7 +239,7 @@ namespace MmdBlendShapeScaler
         //  面部包围盒计算
         // ════════════════════════════════════════════════════════
 
-        private static Bounds GetFaceBounds(SkinnedMeshRenderer renderer)
+        internal static Bounds GetFaceBounds(SkinnedMeshRenderer renderer)
         {
             Transform headBone = GetHeadBone(renderer);
 

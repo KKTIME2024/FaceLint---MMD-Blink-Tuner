@@ -85,6 +85,7 @@ namespace MmdBlendShapeScaler
         public string Prev;
         public string Next;
         public string NoPreview;
+        public string PreviewDragHint;   // "Drag to orbit"
         public string ScaleFactor;
         public string Quick;
         public string SceneViewHint;
@@ -152,6 +153,7 @@ namespace MmdBlendShapeScaler
             Prev           = "◀ Prev",
             Next           = "Next ▶",
             NoPreview      = "No Preview",
+            PreviewDragHint = "Drag to orbit | Scroll to zoom",
             ScaleFactor    = "Scale Factor",
             Quick          = "Quick:",
             SceneViewHint  = "Scene View shows live preview. Rotate to inspect.",
@@ -214,6 +216,7 @@ namespace MmdBlendShapeScaler
             Prev           = "◀ 上一个",
             Next           = "下一个 ▶",
             NoPreview      = "无预览",
+            PreviewDragHint = "拖拽旋转 | 滚轮缩放",
             ScaleFactor    = "缩放系数",
             Quick          = "快速：",
             SceneViewHint  = "Scene View 显示实时预览，可旋转查看。",
@@ -276,6 +279,7 @@ namespace MmdBlendShapeScaler
             Prev           = "◀ 前へ",
             Next           = "次へ ▶",
             NoPreview      = "プレビューなし",
+            PreviewDragHint = "ドラッグで回転 | スクロールで拡大",
             ScaleFactor    = "拡大率",
             Quick          = "クイック:",
             SceneViewHint  = "Scene Viewでリアルタイムプレビュー。回転して確認できます。",

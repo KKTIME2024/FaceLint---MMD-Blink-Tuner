@@ -46,6 +46,17 @@ namespace MmdBlendShapeScaler
         private string _syncFeedbackMessage;
         private double _syncFeedbackEndTime;
 
+        // ── Embedded 3D preview ──
+        private GameObject _previewCameraGo;
+        private Camera _previewCamera;
+        private RenderTexture _previewRT;
+        private float _orbitYaw;
+        private float _orbitPitch;
+        private Vector3 _orbitTarget;
+        private bool _isDraggingPreview;
+        private Vector2 _dragLastMouse;
+        private const int PreviewSize = 200;
+
         // ── Window ──
         public static void ShowWindow(MmdBlendShapeScaler scaler)
         {
@@ -76,6 +87,7 @@ namespace MmdBlendShapeScaler
             EditorPrefs.SetFloat(ZoomLevelPrefKey, _zoomLevel);
             EditorApplication.playModeStateChanged -= OnPlayModeStateChanged;
             AssemblyReloadEvents.beforeAssemblyReload -= OnBeforeAssemblyReload;
+            DestroyPreviewResources();
             RestoreAllWeights();
             ClearThumbnails();
         }
@@ -332,7 +344,9 @@ namespace MmdBlendShapeScaler
             if (GUILayout.Button(S.Prev, GUILayout.Width(80)))
             {
                 ConfirmCurrent();
-                DeselectCurrent();
+                // Restore current shape weight without destroying preview
+                if (_selectedEntry != null)
+                    _faceRenderer.SetBlendShapeWeight(_selectedEntry.meshIndex, 0f);
                 SelectEntry(_entries[curIdx - 1]);
                 exitDetail = true;
             }
@@ -341,7 +355,9 @@ namespace MmdBlendShapeScaler
             if (GUILayout.Button(S.Next, GUILayout.Width(80)))
             {
                 ConfirmCurrent();
-                DeselectCurrent();
+                // Restore current shape weight without destroying preview
+                if (_selectedEntry != null)
+                    _faceRenderer.SetBlendShapeWeight(_selectedEntry.meshIndex, 0f);
                 SelectEntry(_entries[curIdx + 1]);
                 exitDetail = true;
             }
@@ -351,14 +367,53 @@ namespace MmdBlendShapeScaler
 
             EditorGUILayout.Space(8);
 
-            // ── Thumbnail + Controls ──
+            // ── Embedded 3D preview + Controls ──
             EditorGUILayout.BeginHorizontal();
 
-            // Large reference thumbnail
-            if (entry.thumbnail != null)
-                GUILayout.Box(entry.thumbnail, GUILayout.Width(200), GUILayout.Height(200));
+            // Live 3D preview (replaces static thumbnail)
+            EditorGUILayout.BeginVertical();
+            var previewRect = GUILayoutUtility.GetRect(PreviewSize, PreviewSize, GUILayout.Width(PreviewSize));
+            if (_previewRT != null)
+            {
+                GUI.DrawTexture(previewRect, _previewRT);
+                if (Event.current.type == EventType.MouseDown && previewRect.Contains(Event.current.mousePosition))
+                {
+                    _isDraggingPreview = true;
+                    _dragLastMouse = Event.current.mousePosition;
+                    Event.current.Use();
+                }
+                if (_isDraggingPreview && Event.current.type == EventType.MouseDrag)
+                {
+                    Vector2 delta = Event.current.mousePosition - _dragLastMouse;
+                    _orbitYaw += delta.x * 0.5f;
+                    _orbitPitch = Mathf.Clamp(_orbitPitch + delta.y * 0.5f, -80f, 80f);
+                    _dragLastMouse = Event.current.mousePosition;
+                    PositionPreviewCamera();
+                    RenderPreview();
+                    Event.current.Use();
+                }
+                if (_isDraggingPreview && Event.current.type == EventType.MouseUp)
+                {
+                    _isDraggingPreview = false;
+                    Event.current.Use();
+                }
+
+                // Scroll to zoom in the embedded preview
+                if (Event.current.type == EventType.ScrollWheel && previewRect.Contains(Event.current.mousePosition))
+                {
+                    _orbitTargetDistance *= Event.current.delta.y < 0f ? 0.9f : 1.1f;
+                    _orbitTargetDistance = Mathf.Clamp(_orbitTargetDistance, 0.1f, 5f);
+                    PositionPreviewCamera();
+                    RenderPreview();
+                    Event.current.Use();
+                }
+            }
             else
-                GUILayout.Box(S.NoPreview, GUILayout.Width(200), GUILayout.Height(200));
+            {
+                GUI.Box(previewRect, S.NoPreview);
+            }
+            EditorGUILayout.LabelField(S.PreviewDragHint, EditorStyles.centeredGreyMiniLabel, GUILayout.Width(PreviewSize));
+            EditorGUILayout.EndVertical();
 
             GUILayout.Space(12);
 
@@ -373,6 +428,7 @@ namespace MmdBlendShapeScaler
             {
                 entry.sliderValue = Mathf.RoundToInt(newVal);
                 PreviewOnMesh(entry);
+                RenderPreview();
                 Repaint();
             }
 
@@ -476,12 +532,17 @@ namespace MmdBlendShapeScaler
         {
             if (_selectedEntry == entry) return;
 
+            // Create embedded preview on first detail entry
+            if (_selectedEntry == null)
+                CreatePreviewResources();
+
             // Restore previous
             if (_selectedEntry != null)
                 _faceRenderer.SetBlendShapeWeight(_selectedEntry.meshIndex, 0f);
 
             _selectedEntry = entry;
             PreviewOnMesh(entry);
+            RenderPreview();
 
             if (SceneView.lastActiveSceneView != null)
                 SceneView.lastActiveSceneView.Focus();
@@ -505,6 +566,7 @@ namespace MmdBlendShapeScaler
             if (_selectedEntry == null) return;
             _faceRenderer.SetBlendShapeWeight(_selectedEntry.meshIndex, 0f);
             _selectedEntry = null;
+            DestroyPreviewResources();
         }
 
         private void PreviewOnMesh(ShapeEntry entry)
@@ -569,6 +631,99 @@ namespace MmdBlendShapeScaler
 
             _syncFeedbackMessage = string.Format(S.SyncToBlinkDone, source.sliderValue, siblings.Count);
             _syncFeedbackEndTime = EditorApplication.timeSinceStartup + 2.0;
+        }
+
+        // ══════════════════════════════════════════════
+        //  Embedded 3D Preview
+        // ══════════════════════════════════════════════
+
+        private void CreatePreviewResources()
+        {
+            if (_faceRenderer == null) return;
+            DestroyPreviewResources();
+
+            _previewRT = RenderTexture.GetTemporary(PreviewSize, PreviewSize, 24);
+            _previewRT.wrapMode = TextureWrapMode.Clamp;
+
+            _previewCameraGo = new GameObject("__FaceLint_Preview_Cam__");
+            _previewCameraGo.hideFlags = HideFlags.HideAndDontSave;
+            _previewCamera = _previewCameraGo.AddComponent<Camera>();
+
+            var sceneView = SceneView.lastActiveSceneView;
+            if (sceneView != null)
+            {
+                _previewCamera.clearFlags = sceneView.camera.clearFlags;
+                _previewCamera.backgroundColor = sceneView.camera.backgroundColor;
+            }
+            else
+            {
+                _previewCamera.clearFlags = CameraClearFlags.SolidColor;
+                _previewCamera.backgroundColor = new Color(0.25f, 0.25f, 0.25f, 1f);
+            }
+            _previewCamera.nearClipPlane = 0.01f;
+            _previewCamera.farClipPlane = 100f;
+            _previewCamera.targetTexture = _previewRT;
+            _previewCamera.aspect = 1f;
+
+            // Compute face bounds and initial camera position
+            var bounds = BlendShapePreviewRenderer.GetFaceBounds(_faceRenderer);
+            var headBone = BlendShapePreviewRenderer.GetHeadBone(_faceRenderer);
+            var faceForward = _faceRenderer.transform.root.forward;
+            _orbitTarget = bounds.center;
+            _orbitYaw = 0f;
+            _orbitPitch = -2.5f;
+
+            float fov = 25f;
+            _previewCamera.fieldOfView = fov;
+            float objectRadius = bounds.extents.magnitude * 1.2f;
+            if (objectRadius < 0.001f)
+            {
+                objectRadius = 0.15f;
+                _orbitTarget = headBone != null ? headBone.position : _faceRenderer.transform.position;
+            }
+            float distance = objectRadius / Mathf.Tan(fov * 0.5f * Mathf.Deg2Rad);
+            _orbitTargetDistance = Mathf.Max(distance, 0.3f) / Mathf.Max(_zoomLevel, 0.1f);
+
+            PositionPreviewCamera();
+        }
+
+        private void DestroyPreviewResources()
+        {
+            _isDraggingPreview = false;
+            if (_previewCameraGo != null)
+            {
+                Object.DestroyImmediate(_previewCameraGo);
+                _previewCameraGo = null;
+                _previewCamera = null;
+            }
+            if (_previewRT != null)
+            {
+                RenderTexture.ReleaseTemporary(_previewRT);
+                _previewRT = null;
+            }
+        }
+
+        // ReSharper disable once NotAccessedField.Local — serialized for persistence across frames
+        private float _orbitTargetDistance;
+
+        private void PositionPreviewCamera()
+        {
+            if (_previewCamera == null) return;
+
+            var faceForward = _faceRenderer != null
+                ? _faceRenderer.transform.root.forward
+                : Vector3.forward;
+
+            var dir = Quaternion.Euler(_orbitPitch, _orbitYaw, 0f) * faceForward;
+            _previewCamera.transform.position = _orbitTarget - dir * _orbitTargetDistance;
+            _previewCamera.transform.LookAt(_orbitTarget);
+        }
+
+        private void RenderPreview()
+        {
+            if (_previewCamera == null || _previewRT == null) return;
+            _previewCamera.Render();
+            Repaint();
         }
 
         private void RestoreAllWeights()
