@@ -42,6 +42,10 @@ namespace MmdBlendShapeScaler
         private bool _foldoutBrow = true;
         private bool _foldoutOther = true;
 
+        // ── Linked eye-closing ──
+        private bool _linkEyeClosingShapes;
+        private const string LinkEyeClosingPrefKey = "MmdBlendShapeScaler.LinkEyeClosing";
+
         // ── Window ──
         public static void ShowWindow(MmdBlendShapeScaler scaler)
         {
@@ -63,6 +67,7 @@ namespace MmdBlendShapeScaler
         private void OnEnable()
         {
             _zoomLevel = EditorPrefs.GetFloat(ZoomLevelPrefKey, 2.0f);
+            _linkEyeClosingShapes = EditorPrefs.GetBool(LinkEyeClosingPrefKey, false);
             EditorApplication.playModeStateChanged += OnPlayModeStateChanged;
             AssemblyReloadEvents.beforeAssemblyReload += OnBeforeAssemblyReload;
         }
@@ -70,6 +75,7 @@ namespace MmdBlendShapeScaler
         private void OnDisable()
         {
             EditorPrefs.SetFloat(ZoomLevelPrefKey, _zoomLevel);
+            EditorPrefs.SetBool(LinkEyeClosingPrefKey, _linkEyeClosingShapes);
             EditorApplication.playModeStateChanged -= OnPlayModeStateChanged;
             AssemblyReloadEvents.beforeAssemblyReload -= OnBeforeAssemblyReload;
             RestoreAllWeights();
@@ -367,7 +373,11 @@ namespace MmdBlendShapeScaler
             float newVal = EditorGUILayout.Slider(entry.sliderValue, 0f, 200f);
             if (Mathf.Abs(newVal - entry.sliderValue) > 0.1f)
             {
-                entry.sliderValue = Mathf.RoundToInt(newVal);
+                int val = Mathf.RoundToInt(newVal);
+                if (_linkEyeClosingShapes && IsCurrentEyeClosing)
+                    ForEachEyeClosing(e => e.sliderValue = val);
+                else
+                    entry.sliderValue = val;
                 PreviewOnMesh(entry);
                 Repaint();
             }
@@ -379,7 +389,7 @@ namespace MmdBlendShapeScaler
             EditorGUILayout.LabelField(S.Quick, EditorStyles.miniLabel, GUILayout.Width(36));
             int shown = 0;
             int maxShow = 5;
-            if (GUILayout.Button(S.PctValue, GUILayout.Width(45))) { entry.sliderValue = 100; PreviewOnMesh(entry); ConfirmCurrent(); }
+            if (GUILayout.Button(S.PctValue, GUILayout.Width(45))) ApplyQuickPct(100);
             shown++;
             foreach (float val in _recentValues)
             {
@@ -388,14 +398,26 @@ namespace MmdBlendShapeScaler
                 if (pct != entry.sliderValue && pct != 100)
                 {
                     if (GUILayout.Button($"{pct}%", GUILayout.Width(45)))
-                        { entry.sliderValue = pct; PreviewOnMesh(entry); ConfirmCurrent(); }
+                        ApplyQuickPct(pct);
                     shown++;
                 }
             }
             GUILayout.FlexibleSpace();
             EditorGUILayout.EndHorizontal();
 
-            // Status
+            // ── Linked eye-closing toggle ──
+            if (IsCurrentEyeClosing)
+            {
+                _linkEyeClosingShapes = EditorGUILayout.Toggle(S.ApplyToAllBlink, _linkEyeClosingShapes);
+                if (_linkEyeClosingShapes)
+                {
+                    EditorGUILayout.LabelField(S.LinkedBlinkHint, EditorStyles.miniLabel);
+                }
+            }
+            else if (_linkEyeClosingShapes)
+            {
+                _linkEyeClosingShapes = false;
+            }
             EditorGUILayout.Space(8);
             EditorGUILayout.LabelField(S.SceneViewHint, EditorStyles.miniLabel);
             if (entry.IsModified)
@@ -430,6 +452,21 @@ namespace MmdBlendShapeScaler
         // ══════════════════════════════════════════════
         //  Selection / Preview / Confirm
         // ══════════════════════════════════════════════
+
+        private bool IsEyeClosing(ShapeEntry e)
+        {
+            return MmdShapeDatabase.名称到信息映射.TryGetValue(e.name, out var info)
+                && info.是闭合类 && (info.分类 & MmdShapeCategory.眼部) != 0;
+        }
+
+        private bool IsCurrentEyeClosing => _selectedEntry != null && IsEyeClosing(_selectedEntry);
+
+        private void ForEachEyeClosing(System.Action<ShapeEntry> action)
+        {
+            foreach (var e in _entries)
+                if (IsEyeClosing(e))
+                    action(e);
+        }
 
         private void SelectEntry(ShapeEntry entry)
         {
@@ -490,12 +527,31 @@ namespace MmdBlendShapeScaler
                 _recentValues.Sort();
                 if (_recentValues.Count > MaxRecentValues)
                     _recentValues.RemoveAt(_recentValues.Count - 1); // drop largest
-                Debug.Log($"[MMDBlinkFixer] Recent values: [{string.Join(", ", _recentValues)}]");
             }
 
-            Undo.RegisterCompleteObjectUndo(_scaler, $"Set MMD Scale {entry.name}={entry.sliderValue}%");
-            _scaler.SetScale(entry.name, entry.Scale);
+            if (_linkEyeClosingShapes && IsCurrentEyeClosing)
+            {
+                Undo.RegisterCompleteObjectUndo(_scaler, $"Set MMD Scale (all blink)={entry.sliderValue}%");
+                ForEachEyeClosing(e => _scaler.SetScale(e.name, entry.Scale));
+            }
+            else
+            {
+                Undo.RegisterCompleteObjectUndo(_scaler, $"Set MMD Scale {entry.name}={entry.sliderValue}%");
+                _scaler.SetScale(entry.name, entry.Scale);
+            }
+
             EditorUtility.SetDirty(_scaler);
+        }
+
+        private void ApplyQuickPct(int pct)
+        {
+            if (_linkEyeClosingShapes && IsCurrentEyeClosing)
+                ForEachEyeClosing(e => e.sliderValue = pct);
+            else if (_selectedEntry != null)
+                _selectedEntry.sliderValue = pct;
+            if (_selectedEntry != null)
+                PreviewOnMesh(_selectedEntry);
+            ConfirmCurrent();
         }
 
         private void RestoreAllWeights()

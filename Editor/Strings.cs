@@ -92,6 +92,8 @@ namespace MmdBlendShapeScaler
         public string Confirm;
         public string Cancel;
         public string PctValue;              // "100%"
+        public string ApplyToAllBlink;       // "Apply to all blink shapes"
+        public string LinkedBlinkHint;       // hint shown when toggle is on
 
         // ── Inspector ──
         public string TargetRenderer;
@@ -157,6 +159,8 @@ namespace MmdBlendShapeScaler
             Confirm        = "✓ Confirm",
             Cancel         = "✗ Cancel",
             PctValue       = "100%",
+            ApplyToAllBlink = "Apply to all blink shapes",
+            LinkedBlinkHint = "All blink shapes update together (preview shows only the active shape).",
 
             TargetRenderer   = "Target Renderer",
             OpenCalibrator   = "Open Calibrator",
@@ -217,6 +221,8 @@ namespace MmdBlendShapeScaler
             Confirm        = "✓ 确认",
             Cancel         = "✗ 取消",
             PctValue       = "100%",
+            ApplyToAllBlink = "应用到所有闭眼形态键",
+            LinkedBlinkHint = "所有闭眼形态键同步调整（预览仅显示当前选中项）。",
 
             TargetRenderer   = "目标渲染器",
             OpenCalibrator   = "打开校准器",
@@ -277,6 +283,8 @@ namespace MmdBlendShapeScaler
             Confirm        = "✓ 確認",
             Cancel         = "✗ キャンセル",
             PctValue       = "100%",
+            ApplyToAllBlink = "全てのまばたきシェイプに適用",
+            LinkedBlinkHint = "全まばたきシェイプが連動します（プレビューは選択中のシェイプのみ）。",
 
             TargetRenderer   = "ターゲットレンダラー",
             OpenCalibrator   = "キャリブレーターを開く",
