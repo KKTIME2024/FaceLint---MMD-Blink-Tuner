@@ -246,6 +246,10 @@ namespace MmdBlendShapeScaler
             EditorGUILayout.BeginHorizontal();
             if (GUILayout.Button(S.ResetAll, GUILayout.Height(26)))
                 ResetAll();
+            if (GUILayout.Button(S.ExportPreset, GUILayout.Height(26)))
+                ExportPreset();
+            if (GUILayout.Button(S.ImportPreset, GUILayout.Height(26)))
+                ImportPreset();
             if (GUILayout.Button(S.ReScan, GUILayout.Height(26)))
                 Scan();
             EditorGUILayout.EndHorizontal();
@@ -922,6 +926,69 @@ namespace MmdBlendShapeScaler
             BlendShapePreviewRenderer.ClearCache();
 
             Repaint();
+        }
+
+        // ══════════════════════════════════════════════
+        //  Preset import / export
+        // ══════════════════════════════════════════════
+
+        private void ExportPreset()
+        {
+            if (_entries.Count == 0) return;
+
+            var entries = _entries
+                .Where(e => e.IsModified)
+                .Select(e => new MmdScaleEntry { name = e.name, scale = e.Scale })
+                .ToList();
+
+            var data = new MmdScaleList { entries = entries };
+            string json = JsonUtility.ToJson(data, prettyPrint: true);
+
+            string path = EditorUtility.SaveFilePanel(
+                "Export MMD Scale Preset", "", "mmd-preset.json", "json");
+            if (string.IsNullOrEmpty(path)) return;
+
+            System.IO.File.WriteAllText(path, json);
+            AssetDatabase.Refresh();
+        }
+
+        private void ImportPreset()
+        {
+            string path = EditorUtility.OpenFilePanel(
+                "Import MMD Scale Preset", "", "json");
+            if (string.IsNullOrEmpty(path)) return;
+
+            string json = System.IO.File.ReadAllText(path);
+            var data = JsonUtility.FromJson<MmdScaleList>(json);
+            if (data?.entries == null) return;
+
+            // Build a lookup from the loaded data
+            var lookup = new Dictionary<string, float>();
+            foreach (var e in data.entries)
+                if (!string.IsNullOrEmpty(e.name))
+                    lookup[e.name] = Mathf.Clamp(e.scale, 0f, 2f);
+
+            if (lookup.Count == 0) return;
+
+            // Apply to current entries where names match
+            Undo.RegisterCompleteObjectUndo(_scaler, "Import MMD Scale Preset");
+            foreach (var entry in _entries)
+            {
+                if (lookup.TryGetValue(entry.name, out float scale))
+                {
+                    entry.sliderValue = Mathf.RoundToInt(scale * 100f);
+                    _scaler?.SetScale(entry.name, scale);
+                }
+            }
+
+            if (_scaler != null) EditorUtility.SetDirty(_scaler);
+            Repaint();
+        }
+
+        [System.Serializable]
+        private class MmdScaleList
+        {
+            public List<MmdScaleEntry> entries = new List<MmdScaleEntry>();
         }
 
         private void EnsureThumbnail(ShapeEntry entry)
