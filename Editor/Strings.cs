@@ -79,6 +79,7 @@ namespace MmdBlendShapeScaler
         public string ResetAll;
         public string ReScan;
         public string CurrentTooltipFmt;     // "Current: {0}%"
+        public string IncludeAll;            // scan-all toggle
 
         // ── Detail View ──
         public string BackToGrid;
@@ -102,6 +103,7 @@ namespace MmdBlendShapeScaler
         public string NoScaleHint;
         public string ConfiguredFmt;         // "Configured: {0} blendshape(s)"
         public string EntryFmt;              // "  {0}  →  {1}%"
+        public string NeutralizeBakedFace;   // Pass C toggle label
 
         // ── Dialogs ──
         public string DlgResetTitle;
@@ -147,6 +149,7 @@ namespace MmdBlendShapeScaler
             ResetAll           = "Reset All to 100%",
             ReScan             = "Re-scan",
             CurrentTooltipFmt  = "Current: {0}%",
+            IncludeAll         = "Include non-MMD shapes",
 
             BackToGrid     = "← Back to Grid",
             Prev           = "◀ Prev",
@@ -168,6 +171,7 @@ namespace MmdBlendShapeScaler
             NoScaleHint      = "No scale configured. All MMD blendshapes remain at 100%.",
             ConfiguredFmt    = "Configured: {0} blendshape(s)",
             EntryFmt         = "  {0}  →  {1}%",
+            NeutralizeBakedFace = "Neutralize baked base face (Pass C)",
 
             DlgResetTitle  = "Reset All",
             DlgResetMsg    = "Reset ALL MMD shapes to 100%? This cannot be undone.",
@@ -209,6 +213,7 @@ namespace MmdBlendShapeScaler
             ResetAll           = "全部重置为 100%",
             ReScan             = "重新扫描",
             CurrentTooltipFmt  = "当前: {0}%",
+            IncludeAll         = "包含全部形态键（非 MMD）",
 
             BackToGrid     = "← 返回网格",
             Prev           = "◀ 上一个",
@@ -230,6 +235,7 @@ namespace MmdBlendShapeScaler
             NoScaleHint      = "未配置缩放。所有 MMD 形态键保持 100%。",
             ConfiguredFmt    = "已配置: {0} 个形态键",
             EntryFmt         = "  {0}  →  {1}%",
+            NeutralizeBakedFace = "中和烘焙基脸（Pass C）",
 
             DlgResetTitle  = "全部重置",
             DlgResetMsg    = "重置所有 MMD 形态键至 100%？此操作不可撤销。",
@@ -271,6 +277,7 @@ namespace MmdBlendShapeScaler
             ResetAll           = "全て100%にリセット",
             ReScan             = "再スキャン",
             CurrentTooltipFmt  = "現在: {0}%",
+            IncludeAll         = "全シェイプを含む（MMD以外）",
 
             BackToGrid     = "← グリッドに戻る",
             Prev           = "◀ 前へ",
@@ -292,6 +299,7 @@ namespace MmdBlendShapeScaler
             NoScaleHint      = "倍率未設定。全てのMMDシェイプは100%のままです。",
             ConfiguredFmt    = "設定済み: {0} シェイプ",
             EntryFmt         = "  {0}  →  {1}%",
+            NeutralizeBakedFace = "ベース表情を中和（Pass C）",
 
             DlgResetTitle  = "全てリセット",
             DlgResetMsg    = "全てのMMDシェイプを100%にリセットしますか？この操作は元に戻せません。",

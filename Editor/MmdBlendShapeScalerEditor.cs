@@ -34,6 +34,15 @@ namespace MmdBlendShapeScaler
                 EditorUtility.SetDirty(scaler);
             }
 
+            // ── Pass C toggle ──
+            var newNeutralize = EditorGUILayout.Toggle(S.NeutralizeBakedFace, scaler.neutralizeBakedFace);
+            if (newNeutralize != scaler.neutralizeBakedFace)
+            {
+                Undo.RecordObject(scaler, "Toggle Neutralize Baked Face");
+                scaler.neutralizeBakedFace = newNeutralize;
+                EditorUtility.SetDirty(scaler);
+            }
+
             // ── Summary ──
             EditorGUILayout.Space(4);
             if (scaler.Count == 0)

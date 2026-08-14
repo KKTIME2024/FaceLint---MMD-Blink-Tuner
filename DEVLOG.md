@@ -1,5 +1,46 @@
 # MmdBlendShapeScaler — 开发日志
 
+## v0.6 — Sculpt Freeze + 自动 α + Pass C (代码已落地, 待 Unity 验证 2026-05-20)
+
+**状态**: 🚧 代码完成，未在 Unity 中编译/验证。设计见 `DESIGN_SCULPT_BASE.md`。
+
+### 目标（用户验收标准）
+
+> 在 mesh blendshape 里一次捏脸（设置基值），无需修改/修复任何眨眼、MMD、单帧表情、多帧动态表情。
+> 不变量：`你的脸(w) = 捏脸 + (1−b)·作者脸(w)` — 任何驱动到 100 = 作者峰值。
+
+### 实现
+
+- **Pass A — Sculpt Freeze** (`MmdBlendShapeScalePass.cs`)：构建时读取渲染器基值权重（>0.5%），
+  把 Σ b_j·delta 烤进克隆 mesh 的 vertices + normals + tangents（delta 法线/切线累加，**不**用 `RecalculateNormals`），
+  基值权重归零。WD 免疫：雕塑活在顶点空间。
+- **Pass B — 驱动缩放**：驱动通道 = 最终 animator 所有 clip 的 `blendShape.*` binding ∪ 64 个 MMD 名 ∪
+  `vrc.blink` 家族。α_i = 1 − Σ_j b_j·(D_j·D_i)/|D_i|²（投影公式，同 delta 时退化为 1−Σb_j）。
+  手动 `scales` 配置覆盖自动 α。无雕塑时 α=1 → 完全向后兼容。
+- **Pass C — Controller 中和** (`MmdControllerNeutralizer.cs`, v0.1 实验性)：
+  克隆 avatar 自己的控制器，把雕塑 shape 的**常量曲线**（烘焙基脸）改写为 0；
+  动画曲线留给仿射映射；customExpressions 时跳过 FX 层（商品领域）；无 motion 的状态仅日志。
+- **UI**：校准器新增「包含全部形态键（非 MMD）」开关（商品 shape 可调滑块，无缩略图仅名称）；
+  Inspector 新增 Pass C 开关。
+
+### 已知局限（今晚测试重点）
+
+1. Pass C 只修"状态有 motion 且 clip 含常量曲线"的烘焙基脸；无 motion 状态（纯 WD 默认值）未修
+2. 多帧 blendshape 的 α 用 frame-0 数据（沿用单帧 weight-100 假设）
+3. 法线/切线未随驱动缩放（沿用 v7 决策，只缩 vertices）
+4. Pass C 未处理 `VRCAvatarDescriptor.playableLayers` 自定义控制器
+
+### 预期构建日志
+
+```
+[MMDBlinkFixer] Execute started. Found 1 scaler(s) on avatar.
+[MMDBlinkFixer] Processed 334 blendshapes for 'Body'. Sculpt frozen: 1, Scaled: 3.
+[MMDBlinkFixer] Pass C (controller neutralization): 5 clip(s) rewritten.
+[MMDBlinkFixer] Execute finished.
+```
+
+---
+
 ## v0.2.0 — 三语 UI 支持 (已实现 2026-05-20)
 
 **状态**: ✅ 已实现。新增 `Editor/Strings.cs`（字典式三语方案），README 同步更新为三语。

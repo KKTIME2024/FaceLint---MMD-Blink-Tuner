@@ -32,6 +32,7 @@ namespace MmdBlendShapeScaler
         // ── View options ──
         private int _thumbnailSize = 150;
         private float _zoomLevel = 2.0f;
+        private bool _includeAllShapes;   // scan non-MMD shapes too (product/sculpt shapes)
         private static List<float> _recentValues = new List<float>();  // sorted ascending, deduped
         private const string ZoomLevelPrefKey = "MmdBlendShapeScaler.ZoomLevel";
         private const int MaxRecentValues = 8;
@@ -199,6 +200,7 @@ namespace MmdBlendShapeScaler
             // ── View options ──
             EditorGUILayout.BeginHorizontal();
             _thumbnailSize = EditorGUILayout.IntSlider(S.ThumbnailSize, _thumbnailSize, 100, 150);
+            _includeAllShapes = EditorGUILayout.ToggleLeft(S.IncludeAll, _includeAllShapes, GUILayout.Width(190));
             EditorGUILayout.EndHorizontal();
             EditorGUILayout.BeginHorizontal();
             _zoomLevel = EditorGUILayout.Slider(S.ZoomLevel, _zoomLevel, 0.3f, 3.0f);
@@ -276,9 +278,21 @@ namespace MmdBlendShapeScaler
                 tooltip = $"{entry.name}\n{entry.description}\n{string.Format(S.CurrentTooltipFmt, entry.sliderValue)}"
             };
 
-            if (GUILayout.Button(thumbContent, GUILayout.Width(_thumbnailSize), GUILayout.Height(_thumbnailSize)))
+            if (entry.thumbnail != null)
             {
-                SelectEntry(entry);
+                if (GUILayout.Button(thumbContent, GUILayout.Width(_thumbnailSize), GUILayout.Height(_thumbnailSize)))
+                {
+                    SelectEntry(entry);
+                }
+            }
+            else
+            {
+                // Name-only cell (non-MMD shapes without thumbnails)
+                if (GUILayout.Button(new GUIContent(entry.name, thumbContent.tooltip),
+                        GUILayout.Width(_thumbnailSize), GUILayout.Height(_thumbnailSize)))
+                {
+                    SelectEntry(entry);
+                }
             }
 
             GUI.backgroundColor = oldBg;
@@ -286,7 +300,8 @@ namespace MmdBlendShapeScaler
             // Name
             var nameStyle = entry.IsModified ? EditorStyles.boldLabel : EditorStyles.miniLabel;
             EditorGUILayout.LabelField(entry.name, nameStyle, GUILayout.Width(_thumbnailSize));
-            EditorGUILayout.LabelField(entry.description, EditorStyles.miniLabel, GUILayout.Width(_thumbnailSize));
+            if (!string.IsNullOrEmpty(entry.description))
+                EditorGUILayout.LabelField(entry.description, EditorStyles.miniLabel, GUILayout.Width(_thumbnailSize));
 
             // Scale value
             if (entry.IsModified)
@@ -643,11 +658,26 @@ namespace MmdBlendShapeScaler
             var mesh = _faceRenderer.sharedMesh;
             if (mesh == null || mesh.blendShapeCount == 0) return;
 
-            // Find MMD blendshapes on this mesh
+            // Find MMD blendshapes on this mesh (+ all shapes when IncludeAll is on)
             for (int i = 0; i < mesh.blendShapeCount; i++)
             {
                 string name = mesh.GetBlendShapeName(i);
-                if (!MmdShapeDatabase.名称到信息映射.TryGetValue(name, out var info)) continue;
+                if (!MmdShapeDatabase.名称到信息映射.TryGetValue(name, out var info))
+                {
+                    // Non-MMD shape (product/sculpt shapes): listed only in IncludeAll mode,
+                    // no thumbnail (rendered as name-only cell).
+                    if (!_includeAllShapes) continue;
+
+                    _entries.Add(new ShapeEntry
+                    {
+                        name = name,
+                        description = "",
+                        category = MmdShapeCategory.未知,
+                        meshIndex = i,
+                        sliderValue = Mathf.RoundToInt(GetSavedScale(name) * 100f)
+                    });
+                    continue;
+                }
 
                 // Load saved scale from component
                 float savedScale = GetSavedScale(name);
@@ -688,6 +718,9 @@ namespace MmdBlendShapeScaler
                         S.ProgressTitle,
                         string.Format(S.ProgressFmt, entry.name, i + 1, _entries.Count),
                         (float)i / _entries.Count);
+
+                    // Non-MMD shapes have no thumbnail (name-only cell)
+                    if (entry.description.Length == 0) continue;
 
                     entry.thumbnail = BlendShapePreviewRenderer.Render(
                         _faceRenderer,
