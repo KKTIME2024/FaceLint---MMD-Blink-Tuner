@@ -23,7 +23,7 @@ namespace MmdBlendShapeScaler
         // ── Target Renderer (CRITICAL: do NOT rely on VisemeSkinnedMesh) ──
         [SerializeField] public SkinnedMeshRenderer targetRenderer;
 
-        // ── Sculpt Freeze (Pass C) toggle ──
+        // ── Pass C toggle ──
         // Neutralizes the avatar's own baked base face (constant curves in Base/Gesture
         // states) so the vertex-baked sculpt is not double-counted under Write Defaults ON.
         [Tooltip("Neutralize the avatar's own baked base face (Base/Gesture constant curves) so the vertex-baked sculpt isn't double-counted under Write Defaults ON.")]

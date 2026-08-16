@@ -19,6 +19,7 @@ namespace MmdBlendShapeScaler
             public MmdShapeCategory category;
             public int meshIndex;
             public int sliderValue = 100;  // 0-200 (displayed as %)
+            public bool hasThumbnail;      // false = name-only cell (non-MMD shapes)
             public Texture2D thumbnail;
 
             public float Scale => sliderValue / 100f;
@@ -36,6 +37,15 @@ namespace MmdBlendShapeScaler
         private static List<float> _recentValues = new List<float>();  // sorted ascending, deduped
         private const string ZoomLevelPrefKey = "MmdBlendShapeScaler.ZoomLevel";
         private const int MaxRecentValues = 8;
+
+        // ── Base weight preservation (v0.6.1) ──
+        // The renderer's blend shape weights ARE the sculpt data (Pass A reads them at
+        // build time). Preview used to zero them on scan/select/deselect/close and never
+        // restored — opening the calibrator could silently destroy the user's sculpt (and,
+        // pre-v0.6, the model author's baked base weights). Snapshot on scan / renderer
+        // change and restore everywhere the preview touches weights.
+        private float[] _baseWeights;
+        private int _baseWeightsRendererId;
 
         // ── Foldouts ──
         private bool _foldoutEye = true;
@@ -129,6 +139,10 @@ namespace MmdBlendShapeScaler
                     _scaler.targetRenderer = _faceRenderer;
                     EditorUtility.SetDirty(_scaler);
                 }
+
+                // Entries belong to the previous renderer — re-baseline weights now so
+                // restore paths never write old mesh indices into the new renderer.
+                SnapshotBaseWeights();
             }
 
             EditorGUI.BeginDisabledGroup(_faceRenderer == null);
@@ -491,9 +505,9 @@ namespace MmdBlendShapeScaler
         {
             if (_selectedEntry == entry) return;
 
-            // Restore previous
+            // Restore previous entry's base weight instead of zeroing it
             if (_selectedEntry != null)
-                _faceRenderer.SetBlendShapeWeight(_selectedEntry.meshIndex, 0f);
+                _faceRenderer.SetBlendShapeWeight(_selectedEntry.meshIndex, BaseWeightOf(_selectedEntry.meshIndex));
 
             _selectedEntry = entry;
             PreviewOnMesh(entry);
@@ -518,7 +532,7 @@ namespace MmdBlendShapeScaler
         private void DeselectCurrent()
         {
             if (_selectedEntry == null) return;
-            _faceRenderer.SetBlendShapeWeight(_selectedEntry.meshIndex, 0f);
+            _faceRenderer.SetBlendShapeWeight(_selectedEntry.meshIndex, BaseWeightOf(_selectedEntry.meshIndex));
             _selectedEntry = null;
         }
 
@@ -589,12 +603,40 @@ namespace MmdBlendShapeScaler
         private void RestoreAllWeights()
         {
             if (_faceRenderer == null || _faceRenderer.sharedMesh == null) return;
-            int count = _faceRenderer.sharedMesh.blendShapeCount;
-            foreach (var entry in _entries)
+
+            // No snapshot for this renderer yet → treat current weights as the baseline
+            // (never write indices captured from a different renderer).
+            if (_baseWeights == null || _faceRenderer.GetInstanceID() != _baseWeightsRendererId)
+                SnapshotBaseWeights();
+
+            int count = Mathf.Min(_baseWeights.Length, _faceRenderer.sharedMesh.blendShapeCount);
+            for (int i = 0; i < count; i++)
+                _faceRenderer.SetBlendShapeWeight(i, _baseWeights[i]);
+        }
+
+        private void SnapshotBaseWeights()
+        {
+            if (_faceRenderer == null || _faceRenderer.sharedMesh == null)
             {
-                if (entry.meshIndex < count)
-                    _faceRenderer.SetBlendShapeWeight(entry.meshIndex, 0f);
+                _baseWeights = null;
+                _baseWeightsRendererId = 0;
+                return;
             }
+
+            int count = _faceRenderer.sharedMesh.blendShapeCount;
+            var snapshot = new float[count];
+            for (int i = 0; i < count; i++)
+                snapshot[i] = _faceRenderer.GetBlendShapeWeight(i);
+
+            _baseWeights = snapshot;
+            _baseWeightsRendererId = _faceRenderer.GetInstanceID();
+        }
+
+        private float BaseWeightOf(int meshIndex)
+        {
+            if (_baseWeights != null && meshIndex >= 0 && meshIndex < _baseWeights.Length)
+                return _baseWeights[meshIndex];
+            return 0f;
         }
 
         private float GetSavedScale(string mmdName)
@@ -658,6 +700,10 @@ namespace MmdBlendShapeScaler
             var mesh = _faceRenderer.sharedMesh;
             if (mesh == null || mesh.blendShapeCount == 0) return;
 
+            // Baseline the renderer weights NOW: every restore path (close window, play
+            // mode, assembly reload, deselect) returns to these values, never to 0.
+            SnapshotBaseWeights();
+
             // Find MMD blendshapes on this mesh (+ all shapes when IncludeAll is on)
             for (int i = 0; i < mesh.blendShapeCount; i++)
             {
@@ -674,7 +720,8 @@ namespace MmdBlendShapeScaler
                         description = "",
                         category = MmdShapeCategory.未知,
                         meshIndex = i,
-                        sliderValue = Mathf.RoundToInt(GetSavedScale(name) * 100f)
+                        sliderValue = Mathf.RoundToInt(GetSavedScale(name) * 100f),
+                        hasThumbnail = false
                     });
                     continue;
                 }
@@ -689,7 +736,8 @@ namespace MmdBlendShapeScaler
                     description = info.中文说明,
                     category = info.分类,
                     meshIndex = i,
-                    sliderValue = sliderValue
+                    sliderValue = sliderValue,
+                    hasThumbnail = true
                 });
             }
 
@@ -700,9 +748,6 @@ namespace MmdBlendShapeScaler
                               (e.category & MmdShapeCategory.眉毛) != 0 ? 2 : 3)
                 .ThenBy(e => e.name)
                 .ToList();
-
-            // Ensure all weights are zero before rendering thumbnails
-            RestoreAllWeights();
 
             // Start a fresh render batch — face bounds / camera are cached inside Render()
             BlendShapePreviewRenderer.ZoomMultiplier = _zoomLevel;
@@ -719,8 +764,9 @@ namespace MmdBlendShapeScaler
                         string.Format(S.ProgressFmt, entry.name, i + 1, _entries.Count),
                         (float)i / _entries.Count);
 
-                    // Non-MMD shapes have no thumbnail (name-only cell)
-                    if (entry.description.Length == 0) continue;
+                    // Non-MMD shapes have no thumbnail (name-only cell).
+                    // (Render() samples via AnimationMode and never touches real weights.)
+                    if (!entry.hasThumbnail) continue;
 
                     entry.thumbnail = BlendShapePreviewRenderer.Render(
                         _faceRenderer,
@@ -734,6 +780,9 @@ namespace MmdBlendShapeScaler
                 BlendShapePreviewRenderer.EndBatch();
                 EditorUtility.ClearProgressBar();
             }
+
+            // Return the face to its sculpted base state in the Scene View
+            RestoreAllWeights();
 
             Repaint();
         }

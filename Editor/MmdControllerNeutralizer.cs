@@ -58,6 +58,35 @@ namespace MmdBlendShapeScaler
                 animator.runtimeAnimatorController = controllerClone;
             }
 
+            // Custom playable layers (VRCAvatarDescriptor.customizeAnimationLayers) replace the
+            // default layers at runtime and are not attached to any Animator component — the
+            // avatar's own baked base face may live there too. Default layers are skipped: they
+            // are the Animator component's controller, already processed above.
+            if (descriptor != null && descriptor.customizeAnimationLayers)
+            {
+                var layers = descriptor.baseAnimationLayers;
+                for (int layerIdx = 0; layerIdx < layers.Length; layerIdx++)
+                {
+                    var layer = layers[layerIdx];
+                    if (layer.isDefault) continue;
+                    if (layerIdx >= 4 && customExpressions) continue;   // product FX
+
+                    if (!(layer.animatorController is AnimatorController controller)) continue;
+
+                    var controllerClone = Object.Instantiate(controller);
+                    int layerCount = controllerClone.layers.Length;
+                    for (int l2 = 0; l2 < layerCount; l2++)
+                    {
+                        var sm = controllerClone.layers[l2].stateMachine;
+                        if (sm != null)
+                            WalkStateMachine(sm, sculptByPath, ref rewritten, ref motionless);
+                    }
+
+                    layer.animatorController = controllerClone;
+                    layers[layerIdx] = layer;
+                }
+            }
+
             if (motionless > 0)
                 Debug.Log($"[MMDBlinkFixer] Pass C: {motionless} state(s) have no motion (baked WD defaults only); " +
                           "not fixed in v0.1 — sculpted shapes in those states may double-count.");
